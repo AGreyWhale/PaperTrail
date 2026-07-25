@@ -1,2 +1,4 @@
 # PaperTrail
-AI Research Paper Assistant
+AI Research Paper Assistant - Under Active Development
+
+More Soon!
