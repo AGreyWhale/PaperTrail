@@ -1,0 +1,25 @@
+import uuid
+
+from sqlalchemy import select
+from sqlachemy.orm import Session
+
+from app.models.paper import Paper
+
+class PaperRepository:
+    #Owns all database acess for Paper in case we switch from Postgres
+
+    def __init__(self, db:Session):
+        self.db = db
+    
+    def create(self, *, title: str, authors: str, venue: str | None, year: int | None) -> Paper:
+        paper = Paper(title=title, authors=authors, venue=venue, year=year)
+        self.db.add(paper)
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper
+    
+    def get(self, paper_id: uuid.UUID) -> Paper | None:
+        return self.db.get(Paper, paper_id)
+    
+    def list_all(self) -> list[Paper]:
+        return list(self.db.scalars(select(Paper).order_by(Paper.created_at.desc())))
