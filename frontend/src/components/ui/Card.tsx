@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
-interface cardProps extends HTMLAttributes<HTMLDivElement> {
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
     //Makes clickable cards look clickable
     interactive?: boolean;
     children: ReactNode;

@@ -10,13 +10,24 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://papertrail:papertrail@localhost:5432/papertrail"
 
     
-    cors_origins: str = "http://localhost:5173"
+    # Both spellings of the Vite dev server: CORS compares Origin as an
+    # exact string, so localhost and 127.0.0.1 are distinct origins even
+    # though they resolve to the same host.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     openai_api_key: str = ""
 
+    clerk_secret_key: str = ""
+    clerk_authorized_parties: str = "http://localhost:5173,http://127.0.0.1:5173"
+    
+    @property
+    def clerk_authorized_parties_list(self) -> list[str]:
+        return [p.strip() for p in self.clerk_authorized_parties.split(",") if p.strip()]
+    
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
 
 
 @lru_cache

@@ -1,15 +1,74 @@
+import { useState } from "react";
+import { Show, SignInButton, SignOutButton, useAuth } from "@clerk/react";
 import { Button } from "./components/ui/Button";
 import { PaperTile } from "./components/ui/PaperTile";
+import { useApiClient } from "./lib/api";
 
-/** TEMPORARY UNTIL FURTHER COMPLETION OF APP */
+interface Paper {
+  id: string;
+  title: string;
+  authors: string[];
+  venue: string | null;
+  year: number | null;
+}
+
+//Temp design to see if auth works:
 function App() {
+  const { isLoaded } = useAuth();
+  const { request } = useApiClient();
+  const [papers, setPapers] = useState<Paper[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadPapers() {
+    setError(null);
+    try {
+      const data = await request<Paper[]>("/api/papers");
+      setPapers(data);
+    } catch(err){
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+  }
+
+  if(!isLoaded) return null;
+
   return (
     <div className="min-h-screen bg-bg px-8 py-12">
       <div className="max-w-5xl mx-auto flex flex-col gap-10">
         <header className="flex flex-col gap-2">
-          <h1 className="font-serif text-4xl text-text-primary">PaperTrail</h1>
-          <p className="text-text-secondary">Design system preview — Stage 2</p>
+          <div className="flex flex-col gap-2">
+            <h1 className="font-serif text-4xl text-text-primary">PaperTrail</h1>
+            <p className="text-text-secondary">Design system preview — Stage 2</p>
+          </div>
+
+          <Show when="signed-out">
+            <SignInButton>
+              <Button variant="primary">Sign in</Button>
+            </SignInButton>
+          </Show>
+          <Show when="signed-in">
+            <SignOutButton>
+              <Button variant="secondary">Sign out</Button>
+            </SignOutButton>
+          </Show>
         </header>
+
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-xl text-text-primary">Authenticated API call</h2>
+          <Show when="signed-out">
+            <p className="text-sm text-text-secondary">Sign in to fetch your papers from the API.</p>
+          </Show>
+          <Show when="signed-in">
+            <div className="flex items-center gap-3">
+              <Button variant="ai" onClick={loadPapers}>
+                Fetch my papers
+              </Button>
+              {papers !== null && (
+                <span className="text-sm text-text-muted">{papers.length} paper(s) found</span>
+              )}
+            </div>
+            {error && <p className="text-sm text-accent-ai">{error}</p>}
+          </Show>
+        </section>
 
         <section className="flex flex-col gap-3">
           <h2 className="font-serif text-xl text-text-primary">Buttons</h2>
