@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     clerk_secret_key: str = ""
     clerk_authorized_parties: str = "http://localhost:5173,http://127.0.0.1:5173"
     
+    crossref_contact_email: str = ""
+    
+    local_storage_root: str = "./storage"
+    max_upload_size_mb: int = 50
+
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
         return [p.strip() for p in self.clerk_authorized_parties.split(",") if p.strip()]
