@@ -4,15 +4,21 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.papers import get_file_storage
 from app.core.auth import get_current_user_id
 from app.core.database import Base, get_db
 from app.main import app
+from app.storage.local import LocalFileStorage
+
 
 TEST_USER_ID = "user_test123"
 
+@pytest.fixture()
+def anyio_backend():
+    return "asyncio"
 
 @pytest.fixture()
-def client():
+def client(tmp_path):
     """
     Spins up the FastAPI app against an isolated in-memory SQLite DB,
     so tests never touch a real Postgres instance and each test starts
@@ -45,5 +51,6 @@ def client():
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
+    app.dependency_overrides[get_file_storage] = lambda: LocalFileStorage(root=tmp_path)
     yield TestClient(app)
     app.dependency_overrides.clear()

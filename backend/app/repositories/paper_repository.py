@@ -28,3 +28,11 @@ class PaperRepository:
                 select(Paper).where(Paper.owner_id == owner_id).order_by(Paper.created_at.desc())
             )
         )
+
+    def attach_file(self, paper:Paper, *, storage_key: str, original_name: str, size_bytes: int) -> Paper:
+        paper.file_storage_key = storage_key
+        paper.file_original_name = original_name
+        paper.file_size_bytes = size_bytes
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper

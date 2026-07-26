@@ -1,7 +1,8 @@
 from app.schemas.paper import PaperCreate
 
 class CrossRefMappingError(Exception):
-    #When CrossRef is missing needed data
+    """When CrossRef is missing needed data"""
+
 
 def crossref_to_paper_create(data: dict) -> PaperCreate:
     #Converts CrossRef 'message' object into PaperCreate
@@ -11,9 +12,9 @@ def crossref_to_paper_create(data: dict) -> PaperCreate:
     title = titles[0].strip()
 
     authors = []
-    for author in data.get("author", [])
+    for author in data.get("author", []):
         given = author.get("given", "").strip()
-        family = author.gete("family", "").strip()
+        family = author.get("family", "").strip()
         full_name = f"{given} {family}".strip()
         if full_name:
             authors.append(full_name)
@@ -35,4 +36,4 @@ def _extract_year(data: dict) -> int | None:
             parts = date_info["date-parts"][0]
             if parts and parts[0]:
                 return int(parts[0])
-        return None
+    return None

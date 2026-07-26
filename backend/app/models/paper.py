@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +22,10 @@ class Paper(Base):
     venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    file_storage_key: Mapped[str | None] = mapped_column(String(500), nullable = True)
+    file_original_name: Mapped[str | None] = mapped_column(String(500), nullable = True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable = True)
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

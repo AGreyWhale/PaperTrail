@@ -1,7 +1,7 @@
 """add owner_id to papers
 
 Revision ID: d6a1c8e00104
-Revises: 14f525a024fe
+Revises: 2ffe0fa14f48
 Create Date: 2026-07-25 22:47:32.999814
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'd6a1c8e00104'
-down_revision: Union[str, Sequence[str], None] = '14f525a024fe'
+down_revision: Union[str, Sequence[str], None] = '2ffe0fa14f48'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

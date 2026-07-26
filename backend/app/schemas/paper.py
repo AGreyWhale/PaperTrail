@@ -20,6 +20,9 @@ class PaperOut(BaseModel):
     venue: str | None
     year: int | None
     created_at: datetime
+    has_file: bool
+    file_original_name: str | None
+    file_size_bytes: int | None
 
     @classmethod
     def from_model(cls, paper) -> "PaperOut":
@@ -30,4 +33,7 @@ class PaperOut(BaseModel):
             venue=paper.venue,
             year=paper.year,
             created_at=paper.created_at,
+            has_file=paper.file_storage_key is not None,
+            file_original_name=paper.file_original_name,
+            file_size_bytes=paper.file_size_bytes,
         )
