@@ -36,3 +36,9 @@ class PaperRepository:
         self.db.commit()
         self.db.refresh(paper)
         return paper
+
+    def set_processing_status(self, paper: Paper, status: str) -> Paper:
+        paper.processing_status = status
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper

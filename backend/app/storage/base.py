@@ -10,8 +10,12 @@ class FileStorage(ABC):
 
     @abstractmethod
     def save(self, *, key: str, content: bytes) -> None:
-        """Write `content` at `key`, overwriting anything already there."""
+        """Writes `content` at `key`, overwriting anything already there."""
 
     @abstractmethod
     def delete(self, *, key: str) -> None:
-        """Remove `key`. Must not raise if it's already gone."""
+        """Removes file at `key`. Must not raise if it's already gone."""
+
+    @abstractmethod
+    def read(self, *, key: str) -> bytes:
+        """Return raw bytes stored at `key`."""

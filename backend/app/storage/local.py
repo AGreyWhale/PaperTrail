@@ -23,3 +23,6 @@ class LocalFileStorage(FileStorage):
     def delete(self, *, key: str) -> None:
         path = self._path_for(key)
         path.unlink(missing_ok=True)
+    
+    def read(self, *, key: str) -> bytes:
+        return self._path_for(key).read_bytes()

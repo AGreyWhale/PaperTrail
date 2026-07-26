@@ -8,9 +8,11 @@ from app.core.auth import get_current_user_id
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.integrations.crossref.client import CrossRefClient
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
-from app.schemas.paper import PaperCreate, PaperOut
+from app.schemas.paper import ChunkOut, PaperCreate, PaperOut
 from app.services.doi_lookup_service import DoiLookupService
+from app.services.paper_processing_service import PaperProcessingService
 from app.services.paper_service import PaperService
 from app.storage.base import FileStorage
 from app.storage.local import LocalFileStorage
@@ -24,6 +26,12 @@ def get_file_storage() -> FileStorage:
 
 def get_paper_service(db: Session = Depends(get_db), storage: FileStorage = Depends(get_file_storage)) -> PaperService:
     return PaperService(PaperRepository(db), storage)
+
+def get_paper_processing_service(
+    db: Session = Depends(get_db),
+    storage: FileStorage = Depends(get_file_storage),
+) -> PaperProcessingService:
+    return PaperProcessingService(PaperRepository(db), ChunkRepository(db), storage)
 
 def get_doi_lookup_service() -> DoiLookupService:
     settings = get_settings()
@@ -78,3 +86,19 @@ async def upload_paper_file(
         content=content,
         max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
     )
+
+@router.post("/{paper_id}/process", response_model=PaperOut)
+def process_paper(
+    paper_id: uuid.UUID,
+    service: PaperProcessingService = Depends(get_paper_processing_service),
+    user_id: str = Depends(get_current_user_id),
+) -> PaperOut:
+    return service.process_paper(paper_id, owner_id=user_id)
+
+@router.get("/{paper_id}/chunks", response_model=list[ChunkOut])
+def list_chunks(
+    paper_id: uuid.UUID,
+    service: PaperProcessingService = Depends(get_paper_processing_service),
+    user_id: str = Depends(get_current_user_id),
+) -> list[ChunkOut]:
+    return service.list_chunks(paper_id, owner_id=user_id)

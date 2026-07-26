@@ -23,6 +23,7 @@ class PaperOut(BaseModel):
     has_file: bool
     file_original_name: str | None
     file_size_bytes: int | None
+    processing_status: str
 
     @classmethod
     def from_model(cls, paper) -> "PaperOut":
@@ -36,4 +37,13 @@ class PaperOut(BaseModel):
             has_file=paper.file_storage_key is not None,
             file_original_name=paper.file_original_name,
             file_size_bytes=paper.file_size_bytes,
+            processing_status=paper.processing_status,
         )
+
+class ChunkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    chunk_index: int
+    page_number: int
+    text: str
+    token_count: int

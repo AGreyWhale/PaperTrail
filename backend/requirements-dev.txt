@@ -1,0 +1,10 @@
+-r requirements.txt
+
+# Test-only dependencies (and their transitive deps not needed at runtime)
+pytest==9.1.1
+fpdf2==2.8.7
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.20.0
+fonttools==4.63.0
+defusedxml==0.7.1

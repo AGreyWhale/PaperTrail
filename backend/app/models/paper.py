@@ -26,6 +26,10 @@ class Paper(Base):
     file_original_name: Mapped[str | None] = mapped_column(String(500), nullable = True)
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable = True)
     
+    processing_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="unprocessed"
+    )
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
