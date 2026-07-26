@@ -15,10 +15,15 @@ export function useApiClient() {
     async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
       const token = await getToken();
 
+      // File uploads must let the browser set multipart/form-data along
+      // with its boundary parameter; forcing application/json here would
+      // make the request unparseable on the server.
+      const isFormData = options.body instanceof FormData;
+
       const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
         headers: {
-          "Content-Type": "application/json",
+          ...(isFormData ? {} : {"Content-Type": "application/json"}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...options.headers,
         },

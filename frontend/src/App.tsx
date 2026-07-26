@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Show, SignInButton, SignOutButton, useAuth } from "@clerk/react";
-import { Button } from "./components/ui/Button";
-import { PaperTile } from "./components/ui/PaperTile";
+import { Button } from "./components/ui/ui/Button";
+import { PaperTile } from "./components/ui/ui/PaperTile";
+import { AddPaperByDoi } from "./components/ui/AddPaperByDoi";
+import { AttachPdfButton } from "./components/ui/AttachPdfButton";
 import { useApiClient } from "./lib/api";
 
 interface Paper {
@@ -10,6 +12,7 @@ interface Paper {
   authors: string[];
   venue: string | null;
   year: number | null;
+  has_file: boolean;
 }
 
 //Temp design to see if auth works:
@@ -34,10 +37,10 @@ function App() {
   return (
     <div className="min-h-screen bg-bg px-8 py-12">
       <div className="max-w-5xl mx-auto flex flex-col gap-10">
-        <header className="flex flex-col gap-2">
+        <header className="flex items-center justify-between">
           <div className="flex flex-col gap-2">
             <h1 className="font-serif text-4xl text-text-primary">PaperTrail</h1>
-            <p className="text-text-secondary">Design system preview — Stage 2</p>
+            <p className="text-text-secondary">Design system + auth preview — Stage 4</p>
           </div>
 
           <Show when="signed-out">
@@ -67,6 +70,33 @@ function App() {
               )}
             </div>
             {error && <p className="text-sm text-accent-ai">{error}</p>}
+            {papers !== null && papers.length > 0 && (
+              <div className="flex flex-col gap-2 mt-2">
+                {papers.map((paper) => (
+                  <div
+                    key={paper.id}
+                    className="flex items-center justify-between border border-border rounded-control px-3.5 py-2.5 bg-surface"
+                  >
+                    <span className="text-sm text-text-primary truncate pr-4">{paper.title}</span>
+                    <AttachPdfButton
+                      paperId={paper.id}
+                      hasFile={paper.has_file}
+                      onAttached={loadPapers}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Show>
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-xl text-text-primary">Add a paper by DOI</h2>
+          <Show when="signed-out">
+            <p className="text-sm text-text-secondary">Sign in to add papers to your library.</p>
+          </Show>
+          <Show when="signed-in">
+            <AddPaperByDoi onPaperAdded={loadPapers} />
           </Show>
         </section>
 
