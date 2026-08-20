@@ -15,15 +15,27 @@ class Settings(BaseSettings):
     # though they resolve to the same host.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    openai_api_key: str = ""
+    # Any OpenAI-compatible endpoint works, so switching providers
+    # (Gemini, Together, a local Ollama) is these three values, not code.
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_model: str = "llama-3.3-70b-versatile"
 
     clerk_secret_key: str = ""
     clerk_authorized_parties: str = "http://localhost:5173,http://127.0.0.1:5173"
-    
+
     crossref_contact_email: str = ""
-    
+
     local_storage_root: str = "./storage"
     max_upload_size_mb: int = 50
+
+    # Embeddings run locally via sentence-transformers, so no key here.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    chroma_host: str = "localhost"
+    chroma_port: int = 8100
+
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
 
     @property
     def clerk_authorized_parties_list(self) -> list[str]:

@@ -24,6 +24,7 @@ class PaperOut(BaseModel):
     file_original_name: str | None
     file_size_bytes: int | None
     processing_status: str
+    embedding_status: str
 
     @classmethod
     def from_model(cls, paper) -> "PaperOut":
@@ -38,6 +39,7 @@ class PaperOut(BaseModel):
             file_original_name=paper.file_original_name,
             file_size_bytes=paper.file_size_bytes,
             processing_status=paper.processing_status,
+            embedding_status=paper.embedding_status,
         )
 
 class ChunkOut(BaseModel):
@@ -47,3 +49,24 @@ class ChunkOut(BaseModel):
     page_number: int
     text: str
     token_count: int
+
+class SimilarChunkOut(BaseModel):
+    #A chunk matched by semantic search. score is 1 - cosine distance, so higher is better
+    chunk_id: uuid.UUID
+    text: str
+    page_number: int
+    score: float
+
+class AskRequest(BaseModel):
+    question: str
+    top_k: int = 5
+
+class CitationOut(BaseModel):
+    #One chunk the answer was actually grounded in
+    chunk_id: uuid.UUID
+    page_number: int
+    text: str
+
+class AskAnswerOut(BaseModel):
+    answer: str
+    citations: list[CitationOut]

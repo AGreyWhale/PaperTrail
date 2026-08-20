@@ -22,5 +22,15 @@ services:
     ports:
       - "6379:6379"
 
+  chroma:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      # Host 8100, since 8000 is already the local FastAPI backend.
+      - "8100:8000"
+    volumes:
+      - papertrail_chroma_data:/data
+
 volumes:
   papertrail_postgres_data:
+  papertrail_chroma_data:

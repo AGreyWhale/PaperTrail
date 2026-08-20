@@ -10,7 +10,7 @@ VENV     := $(BACKEND)/.venv/bin
 # accidentally pick up a system-wide alembic/uvicorn instead.
 
 .DEFAULT_GOAL := dev
-.PHONY: dev api web up down migrate test build install clean
+.PHONY: dev api web worker up down migrate test build install clean
 
 ## dev: containers + migrations, then API and web together (Ctrl-C stops both)
 dev: migrate
@@ -31,7 +31,11 @@ api: migrate
 web:
 	cd $(FRONTEND) && pnpm dev
 
-## up: start postgres + redis and wait until they accept connections
+## worker: celery worker for embedding jobs (own terminal, alongside `make dev`)
+worker: up
+	cd $(BACKEND) && $(VENV)/celery -A app.workers.celery_app.celery_app worker --loglevel=info
+
+## up: start postgres, redis and chroma, and wait until they accept connections
 up:
 	docker compose -f $(ROOT)/docker-compose.yml up -d --wait
 

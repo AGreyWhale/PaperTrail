@@ -42,3 +42,9 @@ class PaperRepository:
         self.db.commit()
         self.db.refresh(paper)
         return paper
+
+    def set_embedding_status(self, paper: Paper, status: str) -> Paper:
+        paper.embedding_status = status
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper

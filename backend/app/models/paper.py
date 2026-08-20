@@ -29,7 +29,14 @@ class Paper(Base):
     processing_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="unprocessed"
     )
-    
+
+    # not_embedded -> queued -> embedding -> embedded, or failed.
+    # Separate from processing_status because chunking and embedding
+    # fail independently and either can be retried on its own.
+    embedding_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="not_embedded"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

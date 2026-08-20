@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.papers import get_file_storage
+from app.api.papers import get_embedding_enqueue_fn, get_file_storage
 from app.core.auth import get_current_user_id
 from app.core.database import Base, get_db
 from app.main import app
@@ -33,6 +33,10 @@ def client(tmp_path):
     tests shouldn't depend on hitting Clerk's real servers — real
     token verification is covered separately in test_auth.py with a
     mocked Clerk client.
+
+    Enqueueing defaults to a no-op so hitting POST /papers/{id}/embed
+    never needs a live Redis broker. Tests that care about what got
+    enqueued override it further themselves.
     """
     engine = create_engine(
         "sqlite:///:memory:",
@@ -52,5 +56,6 @@ def client(tmp_path):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
     app.dependency_overrides[get_file_storage] = lambda: LocalFileStorage(root=tmp_path)
+    app.dependency_overrides[get_embedding_enqueue_fn] = lambda: (lambda paper_id, owner_id: None)
     yield TestClient(app)
     app.dependency_overrides.clear()
