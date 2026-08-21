@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import HTTPException, status
 
-from app.integrations.llm.client import LLMClient
+from app.integrations.llm.client import LLMClient, LLMUnavailableError
 from app.services.search_service import SearchService
 
 _SYSTEM_PROMPT = """You are a research assistant helping someone understand an academic paper.
@@ -47,9 +47,14 @@ class RagService:
                 "No relevant content found for this question in the paper",
             )
 
-        answer = self.llm_client.complete(
-            system=_SYSTEM_PROMPT, user=build_rag_prompt(question, chunks)
-        )
+        try:
+            answer = self.llm_client.complete(
+                system=_SYSTEM_PROMPT, user=build_rag_prompt(question, chunks)
+            )
+        except LLMUnavailableError as exc:
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY, f"The answer service failed: {exc}"
+            ) from exc
 
         return {
             "answer": answer,

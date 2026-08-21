@@ -14,7 +14,9 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Embed a paper's chunks in the background.** `POST /papers/{id}/embed` validates and returns immediately with `embedding_status="queued"`; a Celery worker runs a local `sentence-transformers` BGE model and writes the vectors into Chroma, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
 - **Semantic search inside a paper.** `GET /papers/{id}/similar?query=…` embeds the query and returns the closest chunks with their page numbers and a similarity score.
 - **Ask a question about a paper.** `POST /papers/{id}/ask` retrieves the most relevant chunks, grounds an LLM answer in them, and returns the chunks it actually used as citations — real sources, not text parsed back out of the answer.
-- **66 passing backend tests** covering auth, papers, uploads, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, search, and RAG.
+- **A real reading view.** The library is a routed paper grid with live pipeline status per tile. Opening a paper gives a two-pane view: the PDF rendered by pdf.js on the left, the assistant panel on the right, with process/embed triggers in the header and polling that flips the panel on by itself when embedding finishes.
+- **Highlight-to-ask.** Selecting text in the PDF raises an Ask / Explain / Summarize toolbar that sends the passage straight to the assistant. This is why the PDF renders through pdf.js rather than a native `<iframe>` — a native viewer won't expose its text layer to page JavaScript.
+- **69 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, search, and RAG.
 
 ## What's in progress
 
@@ -23,14 +25,15 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 | Library-wide search | Search and Q&A are scoped to one paper at a time; cross-library retrieval is next |
 | Retry / observability | A failed embedding job sets `embedding_status="failed"`, but there's no retry policy or job-status endpoint yet |
 | `torch` install size | `sentence-transformers` pulls in torch, so a full `make install` is a large download. The test suite fakes it out and never needs it |
-| Frontend | `App.tsx` is a component/auth preview page; no routing, no real library UI, and nothing wired to the embed/search/ask endpoints yet (`react-router-dom` and `@tanstack/react-query` are installed but unused) |
+| Citations | The assistant shows which pages an answer came from, but clicking a citation doesn't jump/scroll the PDF to that page yet |
+| Search UI | `GET /papers/{id}/similar` has no frontend surface — the reading view goes straight to `/ask` |
 
 ---
 
 ## Tech stack
 
 **Backend** — Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, Postgres 16, pdfplumber, Celery, Chroma, sentence-transformers, Clerk, pytest
-**Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, Clerk, oxlint, pnpm
+**Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, react-pdf/pdf.js, Clerk, oxlint, pnpm
 **Infra (dev)** — Docker Compose (Postgres + Redis + Chroma), local disk for file storage
 
 Embeddings run locally via `sentence-transformers`, so there's no per-token cost or rate limit on them. Answer generation goes to any OpenAI-compatible endpoint (Groq's free tier by default) — switching providers is three values in `.env`, not a code change.
@@ -56,7 +59,10 @@ backend/
   tests/
 frontend/
   src/
-    components/ui/    Button, Card, Input, PaperTile + feature components
+    pages/            LibraryPage (paper grid), ReadingPage (PDF + assistant)
+    components/       AIPanel, PdfViewer, AddPaperByDoi, AttachPdfButton
+    components/ui/    Button, Card, Input, PaperTile
+    components/layout/  AppShell (nav + routed outlet)
     lib/              authenticated fetch wrapper, class-name helper
     index.css         Tailwind theme tokens (warm paper palette)
 docker-compose.yml    postgres + redis + chroma
@@ -110,7 +116,7 @@ There are no `.env.example` files checked in yet — create these by hand.
 | `CROSSREF_CONTACT_EMAIL` | Sent to CrossRef as `mailto` for their polite pool |
 | `LLM_API_KEY` | Any OpenAI-compatible provider; defaults assume [Groq](https://console.groq.com/keys). `/ask` returns 503 without it |
 | `LLM_BASE_URL` | Defaults to Groq's OpenAI-compatible endpoint |
-| `LLM_MODEL` | Defaults to `llama-3.3-70b-versatile` |
+| `LLM_MODEL` | Defaults to `openai/gpt-oss-120b`; must be one your key can serve (`GET {LLM_BASE_URL}/models` lists them) |
 | `EMBEDDING_MODEL` | Defaults to `BAAI/bge-small-en-v1.5`; downloaded and cached on first use |
 | `CHROMA_HOST` / `CHROMA_PORT` | Defaults to the docker-compose Chroma on port 8100 |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Default to the docker-compose Redis |
@@ -131,6 +137,7 @@ There are no `.env.example` files checked in yet — create these by hand.
 | `make dev` | Containers + migrations, then API and web together |
 | `make api` / `make web` | One side only |
 | `make worker` | Celery worker for embedding jobs (run in its own terminal) |
+| `make ports` | Check 8000/5173 are free (`make dev` runs this first and stops if not) |
 | `make up` / `make down` | Start / stop the containers (data is kept) |
 | `make migrate` | Bring the schema up to head |
 | `make test` | Backend test suite |
@@ -154,6 +161,7 @@ All `/api` routes require a Clerk bearer token.
 | `GET` | `/api/papers` | List your papers, newest first |
 | `GET` | `/api/papers/{id}` | Fetch one paper |
 | `POST` | `/api/papers/{id}/file` | Attach a PDF (multipart) |
+| `GET` | `/api/papers/{id}/file` | Serve the raw PDF bytes (the reading view fetches this with auth) |
 | `POST` | `/api/papers/{id}/process` | Extract text and rebuild the paper's chunks |
 | `GET` | `/api/papers/{id}/chunks` | List a paper's chunks in order |
 | `POST` | `/api/papers/{id}/embed` | Queue background embedding of the paper's chunks |

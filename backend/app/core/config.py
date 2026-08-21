@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # (Gemini, Together, a local Ollama) is these three values, not code.
     llm_api_key: str = ""
     llm_base_url: str = "https://api.groq.com/openai/v1"
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "openai/gpt-oss-120b"
 
     clerk_secret_key: str = ""
     clerk_authorized_parties: str = "http://localhost:5173,http://127.0.0.1:5173"

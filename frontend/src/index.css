@@ -41,7 +41,7 @@
 body{
     margin: 0;
     background: var(--color-bg);
-    color: var (--color-text-primary);
+    color: var(--color-text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -51,4 +51,41 @@ h1, h2, h3, .font-content-heading {
     font-family: var(--font-serif);
     font-weight: 500;
     letter-spacing: -0.01em;
+}
+
+/* Markdown-rendered AI answers. Hand-rolled instead of
+ * @tailwindcss/typography since that's tuned for full-width article
+ * prose, not a 380px sidebar. */
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+  margin: 0.75em 0 0.25em;
+}
+.prose-answer p {
+  margin: 0 0 0.75em;
+}
+.prose-answer ul,
+.prose-answer ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.25em;
+}
+.prose-answer li {
+  margin: 0.25em 0;
+}
+.prose-answer strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.prose-answer code {
+  font-size: 0.85em;
+  background: var(--color-bg-secondary);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.prose-answer > *:last-child {
+  margin-bottom: 0;
 }

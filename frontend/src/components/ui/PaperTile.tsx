@@ -1,40 +1,64 @@
 import { Card } from "./Card";
 
+export type PaperTileStatus =
+  | "needs_file"
+  | "processing"
+  | "embedding"
+  | "ready"
+  | "failed";
+
 interface PaperTileProps{
     title: string;
     authors: string[];
-    venue: string;
-    year: number;
-    tags: string[];
-    readingProgress: number;
-    lastOpened: string;
+    venue: string | null;
+    year: number | null;
+    addedDate: string;
+    status: PaperTileStatus;
+    tags?: string[];
 }
 
-//A paper in the library grid
-export function PaperTile({
-    title,
-    authors,
-    venue,
-    year,
-    tags,
-    readingProgress,
-    lastOpened,
-}: PaperTileProps){
-    return (
-    <Card interactive className="p-5 flex flex-col gap-4">
-      <div className="h-1 w-10 rounded-full bg-accent-primary/60" />
+const STATUS_LABEL: Record<PaperTileStatus, string> = {
+  needs_file: "No PDF yet",
+  processing: "Processing…",
+  embedding: "Embedding…",
+  ready: "Ready",
+  failed: "Failed",
+};
 
-      <div className="flex flex-col gap-1.5">
+const STATUS_CLASSES: Record<PaperTileStatus, string> = {
+  needs_file: "bg-bg-secondary text-text-muted",
+  processing: "bg-accent-ai-soft text-accent-ai",
+  embedding: "bg-accent-ai-soft text-accent-ai",
+  ready: "bg-accent-primary-soft text-accent-primary",
+  failed: "bg-accent-ai-soft text-accent-ai",
+};
+
+//A paper in the library grid. Badge shows real pipeline state, since we
+//don't track actual reading position yet
+export function PaperTile({ title, authors, venue, year, addedDate, status, tags = [] }: PaperTileProps){
+    return (
+    <Card interactive className="flex flex-col gap-3 h-full">
+      <div className="flex items-center justify-between">
+        <div className="h-1 w-10 rounded-full bg-accent-primary/60" />
+        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[status]}`}>
+          {STATUS_LABEL[status]}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1">
         <h3 className="font-serif text-lg leading-snug text-text-primary line-clamp-2">
           {title}
         </h3>
-        <p className="text-sm text-text-secondary">
-          {authors.slice(0, 3).join(", ")}
-          {authors.length > 3 ? " et al." : ""}
+        <p className="text-sm text-text-secondary line-clamp-1">
+          {authors.join(", ")}
         </p>
-        <p className="text-xs text-text-muted">
-          {venue} · {year}
-        </p>
+        {(venue || year) && (
+          <p className="text-xs text-text-muted">
+            {venue}
+            {venue && year ? " · " : ""}
+            {year}
+          </p>
+        )}
       </div>
 
       {tags.length > 0 && (
@@ -50,15 +74,7 @@ export function PaperTile({
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5 mt-auto pt-2">
-        <div className="h-1 w-full rounded-full bg-bg-secondary overflow-hidden">
-          <div
-            className="h-full rounded-full bg-accent-primary"
-            style={{ width: `${Math.min(100, Math.max(0, readingProgress))}%` }}
-          />
-        </div>
-        <p className="text-xs text-text-muted">Last opened {lastOpened}</p>
-      </div>
+      <p className="text-xs text-text-muted mt-auto pt-2">Added {addedDate}</p>
     </Card>
   );
 }

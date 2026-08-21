@@ -87,3 +87,42 @@ def test_file_actually_persists_to_storage(client, tmp_path):
     stored_file = tmp_path / "papers" / paper_id / "original.pdf"
     assert stored_file.exists()
     assert stored_file.read_bytes() == _MINIMAL_PDF
+
+
+def test_get_file_returns_the_uploaded_pdf_bytes(client):
+    paper_id = _create_paper(client)
+    client.post(
+        f"/api/papers/{paper_id}/file",
+        files={"file": ("paper.pdf", io.BytesIO(_MINIMAL_PDF), "application/pdf")},
+    )
+
+    response = client.get(f"/api/papers/{paper_id}/file")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content == _MINIMAL_PDF
+
+
+def test_get_file_404s_when_no_file_attached(client):
+    paper_id = _create_paper(client)
+
+    response = client.get(f"/api/papers/{paper_id}/file")
+
+    assert response.status_code == 404
+
+
+def test_get_file_404s_for_another_users_paper(client):
+    from app.core.auth import get_current_user_id
+    from app.main import app
+
+    app.dependency_overrides[get_current_user_id] = lambda: "user_alice"
+    paper_id = _create_paper(client)
+    client.post(
+        f"/api/papers/{paper_id}/file",
+        files={"file": ("paper.pdf", io.BytesIO(_MINIMAL_PDF), "application/pdf")},
+    )
+
+    app.dependency_overrides[get_current_user_id] = lambda: "user_bob"
+    response = client.get(f"/api/papers/{paper_id}/file")
+
+    assert response.status_code == 404

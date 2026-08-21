@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "./ui/Button";
-import { useApiClient } from "../../lib/api";
+import { useApiClient } from "../lib/api";
 
 interface AttachPdfButtonProps {
   paperId: string;

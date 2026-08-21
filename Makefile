@@ -10,22 +10,39 @@ VENV     := $(BACKEND)/.venv/bin
 # accidentally pick up a system-wide alembic/uvicorn instead.
 
 .DEFAULT_GOAL := dev
-.PHONY: dev api web worker up down migrate test build install clean
+.PHONY: dev api web worker ports up down migrate test build install clean
 
 ## dev: containers + migrations, then API and web together (Ctrl-C stops both)
-dev: migrate
+dev: ports migrate
 	@echo ""
 	@echo "  API   http://localhost:8000/docs"
 	@echo "  Web   http://localhost:5173"
 	@echo ""
 	@trap 'kill 0' INT TERM; \
-	  ( cd $(BACKEND) && $(VENV)/uvicorn app.main:app --reload ) & \
+	  ( cd $(BACKEND) && $(VENV)/uvicorn app.main:app --reload --reload-dir app ) & \
 	  ( cd $(FRONTEND) && pnpm dev ) & \
 	  wait
 
+## ports: refuse to start if 8000/5173 are taken. `dev` backgrounds both
+## servers, so without this a bind failure scrolls past and you end up
+## running half the stack against a stale process.
+ports:
+	@for p in 8000 5173; do \
+	  if ss -tln "sport = :$$p" | grep -q LISTEN; then \
+	    echo ""; \
+	    echo "  Port $$p is already in use -- refusing to start."; \
+	    ss -tlnp "sport = :$$p" | tail -n +2; \
+	    echo ""; \
+	    echo "  Stop it, then retry:   kill <pid>"; \
+	    echo "  If it ignores SIGTERM: kill -9 <pid>"; \
+	    echo ""; \
+	    exit 1; \
+	  fi; \
+	done
+
 ## api: backend only, on top of containers + migrations
 api: migrate
-	cd $(BACKEND) && $(VENV)/uvicorn app.main:app --reload
+	cd $(BACKEND) && $(VENV)/uvicorn app.main:app --reload --reload-dir app
 
 ## web: frontend dev server only
 web:

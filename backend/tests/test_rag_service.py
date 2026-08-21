@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
+from app.integrations.llm.client import LLMUnavailableError
 from app.models.chunk import Chunk
 from app.models.paper import Paper
 from app.repositories.paper_repository import PaperRepository
@@ -113,3 +114,20 @@ def test_answer_question_requires_embedded_paper():
         service.answer_question(paper.id, owner_id="user_1", question="Anything?")
 
     assert exc_info.value.status_code == 422
+
+
+def test_answer_question_maps_llm_failure_to_502():
+    paper, search_service = _make_embedded_paper(owner_id="user_1", chunk_texts=["Some content."])
+
+    class BrokenLLMClient:
+        def complete(self, *, system, user):
+            raise LLMUnavailableError("The model `nope` does not exist")
+
+    service = RagService(search_service, BrokenLLMClient())
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.answer_question(paper.id, owner_id="user_1", question="Anything?")
+
+    assert exc_info.value.status_code == 502
+    # The provider's own wording should survive to the client.
+    assert "does not exist" in exc_info.value.detail

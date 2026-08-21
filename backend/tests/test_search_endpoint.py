@@ -72,9 +72,9 @@ def test_similar_returns_matching_chunk(client):
 
 
 def test_similar_requires_embedded_paper(client):
-    # The fakes matter even though this never reaches the vector store:
-    # FastAPI resolves every dependency before the handler runs, so
-    # without them the real sentence-transformers client gets built.
+    # Faked even though this 422s before reaching the vector store:
+    # FastAPI builds every dependency up front, and get_vector_store
+    # would otherwise open a real Chroma connection.
     app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
     app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
 

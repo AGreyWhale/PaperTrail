@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
-import { useApiClient } from "../../lib/api";
+import { useApiClient } from "../lib/api";
 
 interface PaperPreview{
     title: string;

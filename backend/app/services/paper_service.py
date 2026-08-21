@@ -68,3 +68,13 @@ class PaperService:
             size_bytes=len(content),
         )
         return PaperOut.from_model(paper)
+
+    def get_file_content(self, paper_id: uuid.UUID, *, owner_id: str) -> bytes:
+        paper = self.repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+        if paper.file_storage_key is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "This paper has no attached file")
+
+        assert self.storage is not None, "get_file_content requires a storage backend"
+        return self.storage.read(key=paper.file_storage_key)

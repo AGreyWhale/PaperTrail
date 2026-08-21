@@ -1,4 +1,9 @@
+import openai
 from openai import OpenAI
+
+
+class LLMUnavailableError(Exception):
+    """When the LLM provider errors, times out, or rejects the request"""
 
 
 class LLMClient:
@@ -11,13 +16,31 @@ class LLMClient:
         self._client = client or OpenAI(api_key=api_key, base_url=base_url)
 
     def complete(self, *, system: str, user: str) -> str:
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            # Grounded Q&A over retrieved text wants low creativity.
-            temperature=0.2,
-        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                # Grounded Q&A over retrieved text wants low creativity.
+                temperature=0.2,
+            )
+        except openai.APIError as exc:
+            raise LLMUnavailableError(_provider_message(exc)) from exc
+
         return response.choices[0].message.content or ""
+
+
+def _provider_message(exc: openai.APIError) -> str:
+    #Digs the provider's own wording out, so a bad model name or a
+    #revoked key reaches the user instead of a bare 500
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        # The SDK usually unwraps the {"error": {...}} envelope for us,
+        # but not every OpenAI-compatible provider gets that far.
+        nested = body.get("error")
+        message = body.get("message") or (isinstance(nested, dict) and nested.get("message"))
+        if message:
+            return message
+    return str(exc)

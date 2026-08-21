@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Callable
 
 import chromadb
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_id
@@ -146,6 +146,18 @@ async def upload_paper_file(
         content=content,
         max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
     )
+
+@router.get("/{paper_id}/file")
+def get_paper_file(
+    paper_id: uuid.UUID,
+    service: PaperService = Depends(get_paper_service),
+    user_id: str = Depends(get_current_user_id),
+) -> Response:
+    # Served through the API rather than linked directly: an <iframe src>
+    # can't attach the Clerk auth header, so the frontend fetches these
+    # bytes itself and renders them from a blob URL.
+    content = service.get_file_content(paper_id, owner_id=user_id)
+    return Response(content=content, media_type="application/pdf")
 
 @router.post("/{paper_id}/process", response_model=PaperOut)
 def process_paper(
