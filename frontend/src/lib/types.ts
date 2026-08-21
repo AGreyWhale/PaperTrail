@@ -10,6 +10,8 @@ export interface Paper {
   file_size_bytes: number | null;
   processing_status: "unprocessed" | "processing" | "processed" | "failed";
   embedding_status: "not_embedded" | "queued" | "embedding" | "embedded" | "failed";
+  last_opened_at: string | null;
+  last_page: number | null;
 }
 
 export interface Citation {
@@ -37,4 +39,18 @@ export interface AnswerEntry {
   citations: Citation[];
   streaming: boolean;
   error?: string;
+}
+
+//One paper that matched a library-wide search. The excerpt is the
+//"why it matched" — no generated explanation
+export interface SearchHit {
+  paper_id: string;
+  title: string;
+  authors: string[];
+  venue: string | null;
+  year: number | null;
+  excerpt: string;
+  page_number: number;
+  score: number;
+  match_count: number;
 }

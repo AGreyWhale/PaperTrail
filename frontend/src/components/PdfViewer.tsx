@@ -86,6 +86,7 @@ interface PdfViewerProps {
   fileUrl: string;
   title: string;
   onAsk: (question: string) => void;
+  onPageChange?: (page: number) => void;
   //Page the AI panel asked us to jump to, bumped by nonce so clicking the
   //same citation twice still scrolls
   targetPage?: { page: number; nonce: number };
@@ -96,7 +97,14 @@ interface PdfViewerProps {
 
 //Rendered through pdf.js rather than the browser's native viewer, because
 //a native <iframe> PDF won't expose its text layer to page JS
-export function PdfViewer({ fileUrl, title, onAsk, targetPage, highlightText }: PdfViewerProps) {
+export function PdfViewer({
+  fileUrl,
+  title,
+  onAsk,
+  onPageChange,
+  targetPage,
+  highlightText,
+}: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -113,6 +121,8 @@ export function PdfViewer({ fileUrl, title, onAsk, targetPage, highlightText }: 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const commitTimer = useRef<number | undefined>(undefined);
+  const onPageChangeRef = useRef(onPageChange);
+  onPageChangeRef.current = onPageChange;
   // Pages stay mounted once rendered — remounting on scroll-back causes a
   // visible white flash and re-rasterisation.
   const [rendered, setRendered] = useState<Set<number>>(() => new Set([1]));
@@ -235,7 +245,10 @@ export function PdfViewer({ fileUrl, title, onAsk, targetPage, highlightText }: 
           best = page;
         }
       });
-      setCurrentPage(best);
+      setCurrentPage((prev) => {
+        if (prev !== best) onPageChangeRef.current?.(best);
+        return best;
+      });
     }
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);

@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import HTTPException, status
@@ -78,3 +79,32 @@ class PaperService:
 
         assert self.storage is not None, "get_file_content requires a storage backend"
         return self.storage.read(key=paper.file_storage_key)
+
+    def record_opened(self, paper_id: uuid.UUID, *, owner_id: str, page: int | None) -> PaperOut:
+        paper = self.repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+        return PaperOut.from_model(self.repository.record_opened(paper, page=page))
+
+    def list_continue_reading(self, *, owner_id: str, limit: int = 4) -> list[PaperOut]:
+        return [
+            PaperOut.from_model(p)
+            for p in self.repository.list_recently_opened(owner_id, limit=limit)
+        ]
+
+    def suggested_questions(
+        self, paper_id: uuid.UUID, *, owner_id: str, generate
+    ) -> list[str]:
+        #Cached on the paper, so the model runs once per paper rather than on
+        #every home-page load. `generate` is injected to keep the LLM out of here
+        paper = self.repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+
+        if paper.suggested_questions:
+            return json.loads(paper.suggested_questions)
+
+        questions = generate(paper)
+        if questions:
+            self.repository.set_suggested_questions(paper, json.dumps(questions))
+        return questions

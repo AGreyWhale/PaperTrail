@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
+import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 
 // Lazy so the Library page doesn't download react-pdf/pdfjs, which is
@@ -13,7 +14,8 @@ function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route path="/" element={<LibraryPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/library" element={<LibraryPage />} />
         <Route
           path="/papers/:paperId"
           element={

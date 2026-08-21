@@ -37,6 +37,15 @@ class Paper(Base):
         String(20), nullable=False, server_default="not_embedded"
     )
 
+    # Reading progress, for the home page's Continue Reading section.
+    # Both null until the paper is opened for the first time.
+    last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Cached LLM-generated starter questions, JSON-encoded. Generated once per
+    # paper on first request, since it costs a model call.
+    suggested_questions: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

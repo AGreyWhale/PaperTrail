@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,10 +30,45 @@ class PaperRepository:
             )
         )
 
+    def list_by_ids(self, paper_ids: list[uuid.UUID], *, owner_id: str) -> list[Paper]:
+        #One query instead of N, and owner-scoped so a stray vector-store hit
+        #can never surface another user's paper
+        if not paper_ids:
+            return []
+        return list(
+            self.db.scalars(
+                select(Paper).where(Paper.id.in_(paper_ids), Paper.owner_id == owner_id)
+            )
+        )
+
     def attach_file(self, paper:Paper, *, storage_key: str, original_name: str, size_bytes: int) -> Paper:
         paper.file_storage_key = storage_key
         paper.file_original_name = original_name
         paper.file_size_bytes = size_bytes
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper
+
+    def list_recently_opened(self, owner_id: str, *, limit: int = 4) -> list[Paper]:
+        return list(
+            self.db.scalars(
+                select(Paper)
+                .where(Paper.owner_id == owner_id, Paper.last_opened_at.is_not(None))
+                .order_by(Paper.last_opened_at.desc())
+                .limit(limit)
+            )
+        )
+
+    def record_opened(self, paper: Paper, *, page: int | None) -> Paper:
+        paper.last_opened_at = datetime.now(timezone.utc)
+        if page is not None:
+            paper.last_page = page
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper
+
+    def set_suggested_questions(self, paper: Paper, questions_json: str) -> Paper:
+        paper.suggested_questions = questions_json
         self.db.commit()
         self.db.refresh(paper)
         return paper

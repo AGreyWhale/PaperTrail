@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/Button";
 import { AttachPdfButton } from "../components/AttachPdfButton";
@@ -21,6 +21,7 @@ function clampPanel(width: number): number {
 
 export function ReadingPage() {
   const { paperId } = useParams<{ paperId: string }>();
+  const [searchParams] = useSearchParams();
   const { request, requestBlobUrl } = useApiClient();
   const queryClient = useQueryClient();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -36,6 +37,8 @@ export function ReadingPage() {
   );
   const [highlight, setHighlight] = useState<string>();
   const dragging = useRef(false);
+  const openedRef = useRef(false);
+  const pageTimer = useRef<number | undefined>(undefined);
 
   function toggleCollapsed(next: boolean) {
     setCollapsed(next);
@@ -68,6 +71,28 @@ export function ReadingPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.has_file, paperId]);
+
+  // Record the visit once per mount, and jump to whatever page the link
+  // asked for (a citation hit, or where you left off).
+  useEffect(() => {
+    if (!paperId || openedRef.current) return;
+    openedRef.current = true;
+    const page = Number(searchParams.get("page")) || undefined;
+    request(`/api/papers/${paperId}/opened${page ? `?page=${page}` : ""}`, { method: "POST" });
+    if (page) setTargetPage({ page, nonce: 1 });
+
+    const ask = searchParams.get("ask");
+    if (ask) setPendingQuestion({ text: ask, nonce: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperId]);
+
+  // Persist position as you read, debounced — one write per pause, not per pixel.
+  function handlePageChange(page: number) {
+    window.clearTimeout(pageTimer.current);
+    pageTimer.current = window.setTimeout(() => {
+      request(`/api/papers/${paperId}/opened?page=${page}`, { method: "POST" });
+    }, 1200);
+  }
 
   function refreshPaper() {
     queryClient.invalidateQueries({ queryKey: ["paper", paperId] });
@@ -153,6 +178,7 @@ export function ReadingPage() {
                 fileUrl={pdfUrl}
                 title={paper.title}
                 onAsk={handleHighlightAsk}
+                onPageChange={handlePageChange}
                 targetPage={targetPage}
                 highlightText={highlight}
               />

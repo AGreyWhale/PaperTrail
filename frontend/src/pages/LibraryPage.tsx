@@ -1,10 +1,13 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
+import { Input } from "../components/ui/Input";
+import { SearchResultCard } from "../components/SearchResultCard";
 import { PaperTile, type PaperTileStatus } from "../components/ui/PaperTile";
 import { AddPaperByDoi } from "../components/AddPaperByDoi";
 import { useApiClient } from "../lib/api";
-import type { Paper } from "../lib/types";
+import type { Paper, SearchHit } from "../lib/types";
 
 //Collapses the two backend status fields into one badge for the tile
 function deriveStatus(paper: Paper): PaperTileStatus {
@@ -26,6 +29,20 @@ function formatDate(iso: string): string {
 export function LibraryPage() {
   const { request } = useApiClient();
   const queryClient = useQueryClient();
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+
+  // Each keystroke would otherwise embed the query and hit the vector store.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { data: hits, isFetching: searching } = useQuery({
+    queryKey: ["search", debounced],
+    queryFn: () => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(debounced)}`),
+    enabled: debounced.length > 0,
+  });
 
   const { data: papers, isLoading } = useQuery({
     queryKey: ["papers"],
@@ -46,10 +63,37 @@ export function LibraryPage() {
       </header>
 
       <Show when="signed-in">
-        <section className="flex flex-col gap-3 max-w-xl">
-          <h2 className="font-serif text-lg text-text-primary">Add a paper</h2>
-          <AddPaperByDoi onPaperAdded={refreshPapers} />
-        </section>
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search across every paper you've embedded…"
+          className="max-w-2xl"
+        />
+      </Show>
+
+      <Show when="signed-in">
+        {debounced ? (
+          <section className="flex flex-col gap-3">
+            {searching && !hits && <p className="text-text-muted">Searching…</p>}
+            {hits && hits.length === 0 && (
+              <p className="text-text-muted">
+                Nothing matched “{debounced}”. Only embedded papers are searchable.
+              </p>
+            )}
+            {hits && hits.length > 0 && (
+              <div className="flex flex-col gap-3 max-w-3xl">
+                {hits.map((hit) => (
+                  <SearchResultCard key={hit.paper_id} hit={hit} />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="flex flex-col gap-3 max-w-xl">
+            <h2 className="font-serif text-lg text-text-primary">Add a paper</h2>
+            <AddPaperByDoi onPaperAdded={refreshPapers} />
+          </section>
+        )}
       </Show>
 
       <Show when="signed-out">
@@ -57,7 +101,7 @@ export function LibraryPage() {
       </Show>
 
       <Show when="signed-in">
-        <section>
+        <section className={debounced ? "hidden" : undefined}>
           {isLoading && <p className="text-text-muted">Loading your library…</p>}
 
           {papers && papers.length === 0 && (

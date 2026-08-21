@@ -43,22 +43,41 @@ class VectorStore:
             },
         )
 
-        # Chroma nests one list per submitted query embedding, and we only
-        # ever send one, so everything we want lives at index 0. No matches
-        # comes back as empty inner lists rather than a missing key.
-        ids = results["ids"][0]
-        documents = results["documents"][0]
-        metadatas = results["metadatas"][0]
-        distances = results["distances"][0]
+        return _unpack(results)
 
-        return [
-            {
-                "chunk_id": uuid.UUID(chunk_id),
-                "text": documents[i],
-                "page_number": metadatas[i]["page_number"],
-                # The collection is cosine space, so distance is 1 - similarity.
-                # Callers want "higher is better", so flip it back here.
-                "score": 1.0 - distances[i],
-            }
-            for i, chunk_id in enumerate(ids)
-        ]
+    def query_for_owner(
+        self, *, owner_id: str, query_embedding: list[float], top_k: int = 20
+    ) -> list[dict]:
+        #Library-wide: every paper this owner has embedded, not one paper.
+        #Results carry paper_id so the caller can group them
+        results = self._collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            where={"owner_id": {"$eq": owner_id}},
+        )
+        return _unpack(results, with_paper_id=True)
+
+
+def _unpack(results: dict, *, with_paper_id: bool = False) -> list[dict]:
+    # Chroma nests one list per submitted query embedding, and we only
+    # ever send one, so everything we want lives at index 0. No matches
+    # comes back as empty inner lists rather than a missing key.
+    ids = results["ids"][0]
+    documents = results["documents"][0]
+    metadatas = results["metadatas"][0]
+    distances = results["distances"][0]
+
+    matches = []
+    for i, chunk_id in enumerate(ids):
+        match = {
+            "chunk_id": uuid.UUID(chunk_id),
+            "text": documents[i],
+            "page_number": metadatas[i]["page_number"],
+            # The collection is cosine space, so distance is 1 - similarity.
+            # Callers want "higher is better", so flip it back here.
+            "score": 1.0 - distances[i],
+        }
+        if with_paper_id:
+            match["paper_id"] = uuid.UUID(metadatas[i]["paper_id"])
+        matches.append(match)
+    return matches

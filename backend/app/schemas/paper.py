@@ -25,6 +25,8 @@ class PaperOut(BaseModel):
     file_size_bytes: int | None
     processing_status: str
     embedding_status: str
+    last_opened_at: datetime | None
+    last_page: int | None
 
     @classmethod
     def from_model(cls, paper) -> "PaperOut":
@@ -40,6 +42,8 @@ class PaperOut(BaseModel):
             file_size_bytes=paper.file_size_bytes,
             processing_status=paper.processing_status,
             embedding_status=paper.embedding_status,
+            last_opened_at=paper.last_opened_at,
+            last_page=paper.last_page,
         )
 
 class ChunkOut(BaseModel):
@@ -70,3 +74,16 @@ class CitationOut(BaseModel):
 class AskAnswerOut(BaseModel):
     answer: str
     citations: list[CitationOut]
+
+class SearchHitOut(BaseModel):
+    #One paper that matched, with its strongest excerpt. The excerpt IS the
+    #"why it matched" — no generated explanation needed
+    paper_id: uuid.UUID
+    title: str
+    authors: list[str]
+    venue: str | None
+    year: int | None
+    excerpt: str
+    page_number: int
+    score: float
+    match_count: int

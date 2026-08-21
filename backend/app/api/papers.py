@@ -36,6 +36,10 @@ from app.vectorstore.client import VectorStore
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 
+_QUESTIONS_PROMPT = """You are helping a researcher start reading a paper.
+From the excerpt below, write exactly three short questions the paper itself \
+can answer. One per line, no numbering, no preamble. Keep each under 12 words."""
+
 def get_file_storage() -> FileStorage:
     settings = get_settings()
     return LocalFileStorage(root=Path(settings.local_storage_root))
@@ -93,6 +97,38 @@ def get_llm_client() -> LLMClient:
         api_key=settings.llm_api_key, base_url=settings.llm_base_url, model=settings.llm_model
     )
 
+def get_optional_llm_client() -> LLMClient | None:
+    #Unlike get_llm_client this returns None instead of 503 — suggested
+    #questions are a nicety, and a missing key shouldn't break the home page
+    settings = get_settings()
+    if not settings.llm_api_key:
+        return None
+    return LLMClient(
+        api_key=settings.llm_api_key, base_url=settings.llm_base_url, model=settings.llm_model
+    )
+
+def get_question_generator(
+    db: Session = Depends(get_db),
+    llm_client: LLMClient | None = Depends(get_optional_llm_client),
+) -> Callable[[object], list[str]]:
+    def generate(paper) -> list[str]:
+        if llm_client is None:
+            return []
+        chunks = ChunkRepository(db).list_for_paper(paper.id)[:4]
+        if not chunks:
+            return []
+        excerpt = "\n\n".join(c.text for c in chunks)
+        try:
+            raw = llm_client.complete(
+                system=_QUESTIONS_PROMPT, user=f"Title: {paper.title}\n\n{excerpt}"
+            )
+        except LLMUnavailableError:
+            return []
+        lines = [line.strip().lstrip("-*0123456789. ").strip() for line in raw.splitlines()]
+        return [line for line in lines if line][:3]
+
+    return generate
+
 def get_rag_service(
     search_service: SearchService = Depends(get_search_service),
     llm_client: LLMClient = Depends(get_llm_client),
@@ -107,6 +143,15 @@ async def lookup_by_doi(
 ) -> PaperCreate:
     return await service.lookup(doi)
 
+
+@router.get("/continue-reading", response_model=list[PaperOut])
+def continue_reading(
+    limit: int = Query(4, ge=1, le=20),
+    user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+) -> list[PaperOut]:
+    #Declared before /{paper_id} so "continue-reading" isn't parsed as a UUID
+    return service.list_continue_reading(owner_id=user_id, limit=limit)
 
 @router.post("", response_model=PaperOut,status_code=201)
 def add_paper(
@@ -168,6 +213,25 @@ def process_paper(
     user_id: str = Depends(get_current_user_id),
 ) -> PaperOut:
     return service.process_paper(paper_id, owner_id=user_id)
+
+@router.post("/{paper_id}/opened", response_model=PaperOut)
+def record_paper_opened(
+    paper_id: uuid.UUID,
+    page: int | None = Query(None, ge=1),
+    user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+) -> PaperOut:
+    #Called when the reading view opens and as the reader moves through pages
+    return service.record_opened(paper_id, owner_id=user_id, page=page)
+
+@router.get("/{paper_id}/suggested-questions", response_model=list[str])
+def suggested_questions(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+    generate: Callable[[object], list[str]] = Depends(get_question_generator),
+) -> list[str]:
+    return service.suggested_questions(paper_id, owner_id=user_id, generate=generate)
 
 @router.get("/{paper_id}/chunks", response_model=list[ChunkOut])
 def list_chunks(
