@@ -1,0 +1,53 @@
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Python / Backend
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# ChromaDB local persistence (dev only)
+backend/chroma_data/
+
+# Stage 2 additions
+frontend/dist/
+
+# Python backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/dev.db
+backend/.env
+
+# Alembic
+backend/alembic.ini.local
+
+# Frontend env
+frontend/.env
+
+#Local dev file storage
+backend/storage/
+
+#Alembic tmp
+backend/requirements-all.txt
