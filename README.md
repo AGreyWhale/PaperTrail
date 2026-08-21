@@ -16,6 +16,8 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Ask a question about a paper.** `POST /papers/{id}/ask` retrieves the most relevant chunks, grounds an LLM answer in them, and returns the chunks it actually used as citations — real sources, not text parsed back out of the answer.
 - **A real reading view.** The library is a routed paper grid with live pipeline status per tile. Opening a paper gives a two-pane view: the PDF rendered by pdf.js on the left, the assistant panel on the right, with process/embed triggers in the header and polling that flips the panel on by itself when embedding finishes.
 - **Highlight-to-ask.** Selecting text in the PDF raises an Ask / Explain / Summarize toolbar that sends the passage straight to the assistant. This is why the PDF renders through pdf.js rather than a native `<iframe>` — a native viewer won't expose its text layer to page JavaScript.
+- **Answers stream in.** `/ask/stream` sends citations first, then tokens as the model produces them, so the panel fills in progressively instead of waiting on a complete response. Retrieval and validation run before the first byte, so a 404/422 is still a real status code rather than an error buried inside a 200.
+- **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
 - **69 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, search, and RAG.
 
 ## What's in progress
@@ -25,7 +27,6 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 | Library-wide search | Search and Q&A are scoped to one paper at a time; cross-library retrieval is next |
 | Retry / observability | A failed embedding job sets `embedding_status="failed"`, but there's no retry policy or job-status endpoint yet |
 | `torch` install size | `sentence-transformers` pulls in torch, so a full `make install` is a large download. The test suite fakes it out and never needs it |
-| Citations | The assistant shows which pages an answer came from, but clicking a citation doesn't jump/scroll the PDF to that page yet |
 | Search UI | `GET /papers/{id}/similar` has no frontend surface — the reading view goes straight to `/ask` |
 
 ---
@@ -167,6 +168,7 @@ All `/api` routes require a Clerk bearer token.
 | `POST` | `/api/papers/{id}/embed` | Queue background embedding of the paper's chunks |
 | `GET` | `/api/papers/{id}/similar?query=…&top_k=…` | Semantic search within the paper |
 | `POST` | `/api/papers/{id}/ask` | Ask a question, answered from the paper with citations |
+| `POST` | `/api/papers/{id}/ask/stream` | Same, streamed as NDJSON (`citations` → `token`… → `done`) |
 
 `embed`, `similar` and `ask` each depend on the previous step: a paper has to be `processed` before it can be embedded, and `embedded` before it can be searched or asked about. Both return 422 otherwise.
 

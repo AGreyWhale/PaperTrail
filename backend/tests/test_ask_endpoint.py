@@ -1,4 +1,5 @@
 import io
+import json
 import uuid
 
 import chromadb
@@ -13,6 +14,7 @@ from app.api.papers import (
 from app.core.auth import get_current_user_id
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.integrations.llm.client import LLMUnavailableError
 from app.main import app
 from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
@@ -129,3 +131,68 @@ def test_ask_requires_authentication():
         )
     assert response.status_code == 401
     app.dependency_overrides.clear()
+
+
+class StreamingFakeLLMClient(FakeLLMClient):
+    """Yields the canned answer a word at a time, like a real token stream."""
+
+    def stream_complete(self, *, system: str, user: str):
+        self.calls.append({"system": system, "user": user})
+        for word in self.answer.split(" "):
+            yield word + " "
+
+
+def _read_ndjson(response) -> list[dict]:
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
+
+def test_ask_stream_emits_citations_then_tokens_then_done(client):
+    llm_client = StreamingFakeLLMClient(answer="They used a transformer. (p. 1)")
+    paper_id = _setup_embedded_paper(client, llm_client=llm_client)
+
+    response = client.post(
+        f"/api/papers/{paper_id}/ask/stream", json={"question": "What architecture?"}
+    )
+
+    assert response.status_code == 200
+    events = _read_ndjson(response)
+    assert events[0]["type"] == "citations"
+    assert events[0]["citations"][0]["page_number"] == 1
+    assert events[-1]["type"] == "done"
+
+    streamed = "".join(e["text"] for e in events if e["type"] == "token")
+    assert streamed.strip() == "They used a transformer. (p. 1)"
+
+
+def test_ask_stream_reports_llm_failure_as_an_error_event(client):
+    class BrokenStreamingClient(FakeLLMClient):
+        def stream_complete(self, *, system, user):
+            yield "partial "
+            raise LLMUnavailableError("provider exploded")
+
+    paper_id = _setup_embedded_paper(client, llm_client=BrokenStreamingClient())
+
+    response = client.post(f"/api/papers/{paper_id}/ask/stream", json={"question": "Anything?"})
+
+    # Status is already 200 by the time generation fails, so the failure has
+    # to travel in-band rather than as an HTTP error.
+    assert response.status_code == 200
+    events = _read_ndjson(response)
+    assert events[-1]["type"] == "error"
+    assert "provider exploded" in events[-1]["detail"]
+    assert not any(e["type"] == "done" for e in events)
+
+
+def test_ask_stream_still_422s_before_streaming_starts(client):
+    app.dependency_overrides[get_llm_client] = lambda: StreamingFakeLLMClient()
+    app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
+    app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
+
+    create_response = client.post(
+        "/api/papers", json={"title": "Not Embedded", "authors": ["Someone"]}
+    )
+    paper_id = create_response.json()["id"]
+
+    response = client.post(f"/api/papers/{paper_id}/ask/stream", json={"question": "Anything?"})
+
+    assert response.status_code == 422

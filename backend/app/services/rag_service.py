@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterator
 
 from fastapi import HTTPException, status
 
@@ -30,9 +31,12 @@ class RagService:
         self.search_service = search_service
         self.llm_client = llm_client
 
-    def answer_question(
+    def retrieve_context(
         self, paper_id: uuid.UUID, *, owner_id: str, question: str, top_k: int = 5
-    ) -> dict:
+    ) -> list[dict]:
+        #Validation + retrieval, shared by the buffered and streaming paths.
+        #Streaming has to do all of this up front: once the first byte is out,
+        #the status code is already committed and a 404 can't be sent
         if not question.strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Question cannot be empty")
 
@@ -46,6 +50,19 @@ class RagService:
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "No relevant content found for this question in the paper",
             )
+        return chunks
+
+    def stream_answer(self, question: str, chunks: list[dict]) -> Iterator[str]:
+        return self.llm_client.stream_complete(
+            system=_SYSTEM_PROMPT, user=build_rag_prompt(question, chunks)
+        )
+
+    def answer_question(
+        self, paper_id: uuid.UUID, *, owner_id: str, question: str, top_k: int = 5
+    ) -> dict:
+        chunks = self.retrieve_context(
+            paper_id, owner_id=owner_id, question=question, top_k=top_k
+        )
 
         try:
             answer = self.llm_client.complete(

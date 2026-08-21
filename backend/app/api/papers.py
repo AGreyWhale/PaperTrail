@@ -1,9 +1,11 @@
+import json
 import uuid
 from pathlib import Path
 from typing import Callable
 
 import chromadb
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_id
@@ -11,7 +13,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.integrations.crossref.client import CrossRefClient
 from app.integrations.embeddings.local_client import EmbeddingsClient
-from app.integrations.llm.client import LLMClient
+from app.integrations.llm.client import LLMClient, LLMUnavailableError
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
 from app.schemas.paper import (
@@ -199,6 +201,39 @@ def search_similar_chunks(
     service: SearchService = Depends(get_search_service),
 ) -> list[SimilarChunkOut]:
     return service.search_within_paper(paper_id, owner_id=user_id, query=query, top_k=top_k)
+
+@router.post("/{paper_id}/ask/stream")
+def ask_paper_question_stream(
+    paper_id: uuid.UUID,
+    data: AskRequest,
+    user_id: str = Depends(get_current_user_id),
+    service: RagService = Depends(get_rag_service),
+) -> StreamingResponse:
+    # NDJSON rather than SSE: we read this with fetch + a stream reader (an
+    # EventSource can't send the Clerk auth header), and one JSON object per
+    # line is less to get wrong than SSE's framing rules.
+    # Retrieval runs here, outside the generator, so a 404/422 is still a real
+    # status code instead of an error buried in a 200 body.
+    chunks = service.retrieve_context(
+        paper_id, owner_id=user_id, question=data.question, top_k=data.top_k
+    )
+
+    def emit():
+        citations = [
+            {"chunk_id": str(c["chunk_id"]), "page_number": c["page_number"], "text": c["text"]}
+            for c in chunks
+        ]
+        yield json.dumps({"type": "citations", "citations": citations}) + "\n"
+        try:
+            for token in service.stream_answer(data.question, chunks):
+                yield json.dumps({"type": "token", "text": token}) + "\n"
+        except LLMUnavailableError as exc:
+            yield json.dumps({"type": "error", "detail": str(exc)}) + "\n"
+            return
+        yield json.dumps({"type": "done"}) + "\n"
+
+    return StreamingResponse(emit(), media_type="application/x-ndjson")
+
 
 @router.post("/{paper_id}/ask", response_model=AskAnswerOut)
 def ask_paper_question(

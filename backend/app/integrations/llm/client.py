@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 import openai
 from openai import OpenAI
 
@@ -30,6 +32,29 @@ class LLMClient:
             raise LLMUnavailableError(_provider_message(exc)) from exc
 
         return response.choices[0].message.content or ""
+
+    def stream_complete(self, *, system: str, user: str) -> Iterator[str]:
+        #Same call with stream=True, yielding text deltas as they arrive.
+        #Provider errors can surface mid-iteration, so the whole loop is
+        #wrapped rather than just the initial request
+        try:
+            stream = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.2,
+                stream=True,
+            )
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
+        except openai.APIError as exc:
+            raise LLMUnavailableError(_provider_message(exc)) from exc
 
 
 def _provider_message(exc: openai.APIError) -> str:

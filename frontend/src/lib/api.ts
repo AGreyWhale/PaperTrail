@@ -1,5 +1,6 @@
 import { useAuth } from "@clerk/react";
 import { useCallback } from "react";
+import type { AskStreamEvent } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -59,5 +60,47 @@ export function useApiClient() {
     [authHeaders],
   );
 
-  return { request, requestBlobUrl };
+  // Reads an NDJSON stream, one JSON object per line, invoking onEvent as
+  // each arrives. Uses fetch rather than EventSource because EventSource
+  // can't attach the Clerk auth header.
+  const requestStream = useCallback(
+    async (
+      path: string,
+      body: unknown,
+      onEvent: (event: AskStreamEvent) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`API error ${response.status}: ${await response.text()}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // A chunk can split mid-line, so the last piece stays buffered until
+        // the newline that completes it arrives.
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.trim()) onEvent(JSON.parse(line));
+        }
+      }
+      if (buffer.trim()) onEvent(JSON.parse(buffer));
+    },
+    [authHeaders],
+  );
+
+  return { request, requestBlobUrl, requestStream };
 }

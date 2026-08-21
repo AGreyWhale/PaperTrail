@@ -22,3 +22,19 @@ export interface AskAnswer {
   answer: string;
   citations: Citation[];
 }
+
+export type AskStreamEvent =
+  | { type: "citations"; citations: Citation[] }
+  | { type: "token"; text: string }
+  | { type: "error"; detail: string }
+  | { type: "done" };
+
+//One question and its answer in the panel's history
+export interface AnswerEntry {
+  id: string;
+  question: string;
+  answer: string;
+  citations: Citation[];
+  streaming: boolean;
+  error?: string;
+}

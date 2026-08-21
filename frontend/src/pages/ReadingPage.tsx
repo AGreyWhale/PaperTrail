@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/Button";
@@ -6,9 +6,18 @@ import { AttachPdfButton } from "../components/AttachPdfButton";
 import { AIPanel } from "../components/AIPanel";
 import { PdfViewer } from "../components/PdfViewer";
 import { useApiClient } from "../lib/api";
-import type { Paper } from "../lib/types";
+import type { Citation, Paper } from "../lib/types";
 
 const TRANSIENT_STATUSES = new Set(["queued", "embedding"]);
+
+const PANEL_KEY = "papertrail:panel-width";
+const COLLAPSED_KEY = "papertrail:panel-collapsed";
+const PANEL_MIN = 320;
+const PANEL_MAX = 900;
+
+function clampPanel(width: number): number {
+  return Math.min(PANEL_MAX, Math.max(PANEL_MIN, width));
+}
 
 export function ReadingPage() {
   const { paperId } = useParams<{ paperId: string }>();
@@ -17,6 +26,21 @@ export function ReadingPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pipelineBusy, setPipelineBusy] = useState(false);
   const [pendingQuestion, setPendingQuestion] = useState<{ text: string; nonce: number }>();
+  const [targetPage, setTargetPage] = useState<{ page: number; nonce: number }>();
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const stored = Number(localStorage.getItem(PANEL_KEY));
+    return stored ? clampPanel(stored) : 380;
+  });
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSED_KEY) === "1",
+  );
+  const [highlight, setHighlight] = useState<string>();
+  const dragging = useRef(false);
+
+  function toggleCollapsed(next: boolean) {
+    setCollapsed(next);
+    localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
+  }
 
   const { data: paper } = useQuery({
     queryKey: ["paper", paperId],
@@ -51,6 +75,30 @@ export function ReadingPage() {
 
   function handleHighlightAsk(question: string) {
     setPendingQuestion((prev) => ({ text: question, nonce: (prev?.nonce ?? 0) + 1 }));
+  }
+
+  function handleCitationClick(citation: Citation) {
+    setHighlight(citation.text);
+    setTargetPage((prev) => ({ page: citation.page_number, nonce: (prev?.nonce ?? 0) + 1 }));
+  }
+
+  // Panel resize. Pointer capture keeps the drag alive even when the cursor
+  // outruns the handle or crosses into the PDF's iframe-like canvas area.
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragging.current = true;
+  }
+
+  function onResize(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return;
+    setPanelWidth(clampPanel(window.innerWidth - e.clientX));
+  }
+
+  function endResize(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    dragging.current = false;
+    localStorage.setItem(PANEL_KEY, String(panelWidth));
   }
 
   async function handleProcess() {
@@ -101,7 +149,13 @@ export function ReadingPage() {
         <div className="flex-1 bg-bg-secondary">
           {paper.has_file ? (
             pdfUrl ? (
-              <PdfViewer fileUrl={pdfUrl} title={paper.title} onAsk={handleHighlightAsk} />
+              <PdfViewer
+                fileUrl={pdfUrl}
+                title={paper.title}
+                onAsk={handleHighlightAsk}
+                targetPage={targetPage}
+                highlightText={highlight}
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <p className="text-text-muted text-sm">Loading PDF…</p>
@@ -115,11 +169,35 @@ export function ReadingPage() {
           )}
         </div>
 
-        <AIPanel
-          paperId={paper.id}
-          embeddingStatus={paper.embedding_status}
-          pendingQuestion={pendingQuestion}
-        />
+        {collapsed ? (
+          <button
+            onClick={() => toggleCollapsed(false)}
+            title="Show assistant"
+            className="shrink-0 w-9 border-l border-border bg-surface hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors flex items-start justify-center pt-4"
+          >
+            ‹
+          </button>
+        ) : (
+          <>
+            <div
+              onPointerDown={startResize}
+              onPointerMove={onResize}
+              onPointerUp={endResize}
+              onDoubleClick={() => setPanelWidth(380)}
+              title="Drag to resize — double-click to reset"
+              className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-accent-primary/50 active:bg-accent-primary transition-colors"
+            />
+
+            <AIPanel
+              paperId={paper.id}
+              width={panelWidth}
+              embeddingStatus={paper.embedding_status}
+              pendingQuestion={pendingQuestion}
+              onCollapse={() => toggleCollapsed(true)}
+              onCitationClick={handleCitationClick}
+            />
+          </>
+        )}
       </div>
     </div>
   );

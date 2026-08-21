@@ -89,3 +89,29 @@ h1, h2, h3, .font-content-heading {
 .prose-answer > *:last-child {
   margin-bottom: 0;
 }
+
+/*
+ * pdf.js paints the page to a canvas and lays transparent text on top for
+ * selection. Two consequences we have to handle ourselves:
+ *
+ * 1. <mark> defaults to an opaque background and its own text colour, which
+ *    paints over the canvas glyphs instead of tinting them. Hence the
+ *    translucent fill, multiply blend, and explicitly transparent text.
+ * 2. The stylesheet react-pdf ships omits the ::selection rule that pdf.js's
+ *    own pdf_viewer.css has, so selecting transparent text showed nothing at
+ *    all. Re-added here.
+ */
+.textLayer ::selection {
+  background: rgba(58, 85, 120, 0.3);
+}
+
+.textLayer br::selection {
+  background: transparent;
+}
+
+.pt-cite {
+  background-color: rgba(193, 96, 46, 0.32);
+  mix-blend-mode: multiply;
+  color: transparent;
+  border-radius: 2px;
+}
