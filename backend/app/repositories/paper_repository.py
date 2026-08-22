@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.paper import Paper
+from app.models.tag import paper_tags
 
 class PaperRepository:
     #Owns all database acess for Paper in case we switch from Postgres
@@ -23,12 +24,13 @@ class PaperRepository:
         paper = self.db.get(Paper, paper_id)
         return paper if paper and paper.owner_id == owner_id else None
     
-    def list_for_owner(self, owner_id: str) -> list[Paper]:
-        return list(
-            self.db.scalars(
-                select(Paper).where(Paper.owner_id == owner_id).order_by(Paper.created_at.desc())
+    def list_for_owner(self, owner_id: str, *, tag_id: uuid.UUID | None = None) -> list[Paper]:
+        query = select(Paper).where(Paper.owner_id == owner_id)
+        if tag_id is not None:
+            query = query.join(paper_tags, Paper.id == paper_tags.c.paper_id).where(
+                paper_tags.c.tag_id == tag_id
             )
-        )
+        return list(self.db.scalars(query.order_by(Paper.created_at.desc())))
 
     def list_by_ids(self, paper_ids: list[uuid.UUID], *, owner_id: str) -> list[Paper]:
         #One query instead of N, and owner-scoped so a stray vector-store hit
@@ -69,6 +71,17 @@ class PaperRepository:
 
     def set_suggested_questions(self, paper: Paper, questions_json: str) -> Paper:
         paper.suggested_questions = questions_json
+        self.db.commit()
+        self.db.refresh(paper)
+        return paper
+
+    def delete(self, paper: Paper) -> None:
+        #Chunks, notes, tag and collection links all cascade at the FK level
+        self.db.delete(paper)
+        self.db.commit()
+
+    def set_favorite(self, paper: Paper, is_favorite: bool) -> Paper:
+        paper.is_favorite = is_favorite
         self.db.commit()
         self.db.refresh(paper)
         return paper

@@ -3,6 +3,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+
+class TagCreate(BaseModel):
+    name: str
+
+class CollectionRef(BaseModel):
+    #Just enough to show membership on a paper
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+
 class PaperCreate(BaseModel):
     #When adding a paper
     title: str
@@ -25,6 +39,9 @@ class PaperOut(BaseModel):
     file_size_bytes: int | None
     processing_status: str
     embedding_status: str
+    is_favorite: bool
+    tags: list["TagOut"]
+    collections: list["CollectionRef"]
     last_opened_at: datetime | None
     last_page: int | None
 
@@ -42,6 +59,9 @@ class PaperOut(BaseModel):
             file_size_bytes=paper.file_size_bytes,
             processing_status=paper.processing_status,
             embedding_status=paper.embedding_status,
+            is_favorite=paper.is_favorite,
+            tags=[TagOut.model_validate(t) for t in paper.tags],
+            collections=[CollectionRef.model_validate(c) for c in paper.collections],
             last_opened_at=paper.last_opened_at,
             last_page=paper.last_page,
         )
@@ -87,3 +107,32 @@ class SearchHitOut(BaseModel):
     page_number: int
     score: float
     match_count: int
+
+class CollectionOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    paper_count: int
+
+class CollectionCreate(BaseModel):
+    name: str
+
+class NoteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    paper_id: uuid.UUID
+    content: str
+    quoted_text: str | None
+    page_number: int | None
+    color: str | None
+    created_at: datetime
+    updated_at: datetime
+
+class NoteCreate(BaseModel):
+    content: str = ""
+    quoted_text: str | None = None
+    page_number: int | None = None
+    color: str | None = None
+
+class NoteUpdate(BaseModel):
+    content: str

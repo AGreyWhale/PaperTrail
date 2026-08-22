@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { useApiClient } from "../lib/api";
+import { NotesTab } from "./NotesTab";
 import type { AnswerEntry, Citation } from "../lib/types";
 
 const TEXT_KEY = "papertrail:answer-text-size";
@@ -14,6 +15,7 @@ interface AIPanelProps {
   embeddingStatus: string;
   onCollapse: () => void;
   onCitationClick?: (citation: Citation) => void;
+  pendingQuote?: { text: string; page: number; nonce: number };
   //Set by the PDF toolbar. nonce bumps even for identical text, so
   //highlighting the same passage twice still re-asks
   pendingQuestion?: { text: string; nonce: number };
@@ -27,11 +29,13 @@ export function AIPanel({
   onCollapse,
   onCitationClick,
   pendingQuestion,
+  pendingQuote,
 }: AIPanelProps) {
   const { requestStream } = useApiClient();
   const [question, setQuestion] = useState("");
   const [entries, setEntries] = useState<AnswerEntry[]>([]);
   const [textSize, setTextSize] = useState(() => Number(localStorage.getItem(TEXT_KEY)) || 15);
+  const [tab, setTab] = useState<"ask" | "notes">("ask");
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -126,6 +130,10 @@ export function AIPanel({
     if (atBottom) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [lastEntry?.answer, entries.length]);
 
+  useEffect(() => {
+    if (pendingQuote) setTab("notes");
+  }, [pendingQuote?.nonce]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return (
@@ -133,8 +141,16 @@ export function AIPanel({
       style={{ width }}
       className="shrink-0 border-l border-border bg-surface flex flex-col h-full"
     >
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-2">
-        <h2 className="font-serif text-base text-text-primary truncate">Ask about this paper</h2>
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-2">
+        {/* Tabs, so notes coexist with Ask without either dominating */}
+        <div className="flex items-center gap-1">
+          <TabButton active={tab === "ask"} onClick={() => setTab("ask")}>
+            Ask
+          </TabButton>
+          <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>
+            Notes
+          </TabButton>
+        </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={cycleTextSize}
@@ -154,6 +170,10 @@ export function AIPanel({
         </div>
       </div>
 
+      {tab === "notes" ? (
+        <NotesTab paperId={paperId} textSize={textSize} pendingQuote={pendingQuote} />
+      ) : (
+        <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
         {!ready && (
           <p className="text-sm text-text-muted">
@@ -199,7 +219,32 @@ export function AIPanel({
           {busy ? "Thinking…" : "Ask"}
         </Button>
       </div>
+        </>
+      )}
     </aside>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`font-serif text-sm px-2.5 py-1 rounded-md transition-colors ${
+        active
+          ? "text-text-primary bg-bg-secondary"
+          : "text-text-muted hover:text-text-secondary"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -211,6 +256,7 @@ function AnswerBlock({
   entry: AnswerEntry;
   textSize: number;
   onCitationClick?: (citation: Citation) => void;
+  pendingQuote?: { text: string; page: number; nonce: number };
 }) {
   const [copied, setCopied] = useState(false);
 

@@ -35,8 +35,11 @@ class PaperService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not found")
         return PaperOut.from_model(paper)
 
-    def list_papers(self, *, owner_id: str) -> list[PaperOut]:
-        return [PaperOut.from_model(p) for p in self.repository.list_for_owner(owner_id)]
+    def list_papers(self, *, owner_id: str, tag_id: uuid.UUID | None = None) -> list[PaperOut]:
+        return [
+            PaperOut.from_model(p)
+            for p in self.repository.list_for_owner(owner_id, tag_id=tag_id)
+        ]
 
     def attach_file(
         self,
@@ -108,3 +111,25 @@ class PaperService:
         if questions:
             self.repository.set_suggested_questions(paper, json.dumps(questions))
         return questions
+
+    def toggle_favorite(self, paper_id: uuid.UUID, *, owner_id: str) -> PaperOut:
+        paper = self.repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+        return PaperOut.from_model(self.repository.set_favorite(paper, not paper.is_favorite))
+
+    def delete_paper(self, paper_id: uuid.UUID, *, owner_id: str, vector_store=None) -> None:
+        #The row cascades to chunks/notes/links, but the stored PDF and the
+        #embedded vectors live outside Postgres and have to be cleared here or
+        #they outlive the paper
+        paper = self.repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+
+        storage_key = paper.file_storage_key
+        self.repository.delete(paper)
+
+        if storage_key and self.storage is not None:
+            self.storage.delete(key=storage_key)
+        if vector_store is not None:
+            vector_store.delete_for_paper(paper_id)

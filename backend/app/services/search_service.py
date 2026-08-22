@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from fastapi import HTTPException, status
@@ -8,6 +9,58 @@ from app.vectorstore.client import VectorStore
 
 #How many chunks to pull per requested paper before grouping collapses them
 CHUNKS_PER_PAPER = 4
+
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_WORD = re.compile(r"[a-z0-9]+")
+#Too common to say anything about where a match is
+_STOPWORDS = frozenset(
+    "the a an and or of to in for on with is are was were be been it its this that these those "
+    "as at by from we our they their he she you i not can may".split()
+)
+
+
+def query_terms(query: str) -> set[str]:
+    return {w for w in _WORD.findall(query.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+
+def focus_snippet(text: str, query: str, *, max_chars: int = 320) -> str:
+    """
+    Narrows a ~500-token chunk to the sentence that actually matched, plus
+    enough neighbours to read naturally — the Ctrl-F view rather than the whole
+    page. Falls back to the opening sentences when the match was purely
+    semantic and shares no words with the query.
+    """
+    flat = " ".join(text.split())
+    sentences = [s for s in _SENTENCE_BOUNDARY.split(flat) if s.strip()]
+    if not sentences:
+        return flat[:max_chars]
+
+    terms = query_terms(query)
+    scores = [len(terms & set(_WORD.findall(s.lower()))) for s in sentences]
+    best = max(range(len(sentences)), key=lambda i: scores[i]) if terms else 0
+    if scores[best] == 0:
+        best = 0
+
+    # Grow outwards from the matched sentence until the budget runs out.
+    start = end = best
+    length = len(sentences[best])
+    while length < max_chars:
+        grew = False
+        if end + 1 < len(sentences) and length + len(sentences[end + 1]) <= max_chars:
+            end += 1
+            length += len(sentences[end])
+            grew = True
+        if start > 0 and length + len(sentences[start - 1]) <= max_chars:
+            start -= 1
+            length += len(sentences[start])
+            grew = True
+        if not grew:
+            break
+
+    snippet = " ".join(sentences[start : end + 1])
+    if len(snippet) > max_chars:
+        snippet = snippet[:max_chars].rsplit(" ", 1)[0]
+    return ("… " if start > 0 else "") + snippet + (" …" if end < len(sentences) - 1 else "")
 
 
 class SearchService:
@@ -77,7 +130,7 @@ class SearchService:
                 "authors": [a.strip() for a in papers[paper_id].authors.split(",") if a.strip()],
                 "venue": papers[paper_id].venue,
                 "year": papers[paper_id].year,
-                "excerpt": group["match"]["text"],
+                "excerpt": focus_snippet(group["match"]["text"], query),
                 "page_number": group["match"]["page_number"],
                 "score": group["match"]["score"],
                 "match_count": group["count"],

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -13,6 +13,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 const ZOOM_STEPS = [0.5, 0.67, 0.8, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3];
 const SCALE_KEY = "papertrail:pdf-scale";
 const PAGE_GAP = 16;
+const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple"];
 // Stand-in page height (roughly US Letter at 72dpi) used before page 1
 // reports its real size. Without it every placeholder is 0px tall, they
 // all land in the viewport at once, and nothing is actually lazy.
@@ -71,6 +72,11 @@ function storedScale(): number {
   return raw ? clampScale(raw) : 1;
 }
 
+interface Marked {
+  range: [number, number] | null;
+  color: string;
+}
+
 interface SelectionState {
   text: string;
   top: number;
@@ -86,6 +92,7 @@ interface PdfViewerProps {
   fileUrl: string;
   title: string;
   onAsk: (question: string) => void;
+  onSaveQuote?: (quote: string, page: number) => void;
   onPageChange?: (page: number) => void;
   //Page the AI panel asked us to jump to, bumped by nonce so clicking the
   //same citation twice still scrolls
@@ -93,6 +100,9 @@ interface PdfViewerProps {
   //Text of the clicked citation, tinted in the text layer so a source lands
   //on a paragraph rather than just "somewhere on page 4"
   highlightText?: string;
+  //Saved highlights to paint on every page, independent of citation clicks
+  highlights?: { text: string; page: number; color: string | null }[];
+  onHighlight?: (quote: string, page: number, color: string) => void;
 }
 
 //Rendered through pdf.js rather than the browser's native viewer, because
@@ -101,9 +111,12 @@ export function PdfViewer({
   fileUrl,
   title,
   onAsk,
+  onSaveQuote,
   onPageChange,
   targetPage,
   highlightText,
+  highlights = [],
+  onHighlight,
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
@@ -126,7 +139,11 @@ export function PdfViewer({
   // Pages stay mounted once rendered — remounting on scroll-back causes a
   // visible white flash and re-rasterisation.
   const [rendered, setRendered] = useState<Set<number>>(() => new Set([1]));
-  const [citedRange, setCitedRange] = useState<[number, number] | null>(null);
+  // Text items are cached per page as they load; the marked ranges are then
+  // DERIVED from them. onGetTextSuccess only fires once per page, so computing
+  // ranges inside it meant a highlight created later never painted.
+  const pageItems = useRef<Map<number, { str: string }[]>>(new Map());
+  const [itemsVersion, setItemsVersion] = useState(0);
 
   const commitScale = useCallback((next: number) => {
     const target = clampScale(next);
@@ -141,6 +158,40 @@ export function PdfViewer({
 
   const effectiveScale = preview ?? scale;
   const highlightPage = targetPage?.page;
+
+  const pageRanges = useMemo(() => {
+    const byPage = new Map<number, Marked[]>();
+    pageItems.current.forEach((items, page) => {
+      const marks: Marked[] = highlights
+        .filter((h) => h.page === page)
+        .map((h) => ({ range: citedItemRange(items, h.text), color: h.color ?? "yellow" }))
+        .filter((m): m is Marked => m.range !== null);
+
+      // A clicked citation paints on top of saved highlights.
+      if (page === highlightPage && highlightText) {
+        const range = citedItemRange(items, highlightText);
+        if (range) marks.push({ range, color: "cite" });
+      }
+      if (marks.length) byPage.set(page, marks);
+    });
+    return byPage;
+  }, [itemsVersion, highlights, highlightText, highlightPage]);
+
+  // One stable renderer per page. Built inline, its identity changed on every
+  // render — including every pointermove while the sidebar is being dragged —
+  // and react-pdf rebuilt the whole text layer each time.
+  const textRenderers = useMemo(() => {
+    const byPage = new Map<number, (props: { itemIndex: number; str: string }) => string>();
+    pageRanges.forEach((marks, page) => {
+      byPage.set(page, ({ itemIndex, str }) => {
+        const hit = marks.find((m) => itemIndex >= m.range![0] && itemIndex <= m.range![1]);
+        return hit
+          ? `<mark class="pt-hl pt-hl-${hit.color}">${escapeHtml(str)}</mark>`
+          : escapeHtml(str);
+      });
+    });
+    return byPage;
+  }, [pageRanges]);
 
   const stepZoom = useCallback(
     (direction: 1 | -1) => {
@@ -256,7 +307,6 @@ export function PdfViewer({
 
   // Citation click in the AI panel.
   useEffect(() => {
-    setCitedRange(null);
     if (!targetPage) return;
     const el = pageRefs.current.get(targetPage.page);
     if (!el) return;
@@ -381,19 +431,10 @@ export function PdfViewer({
                       pageNumber={page}
                       scale={scale}
                       onGetTextSuccess={({ items }) => {
-                        if (page !== highlightPage || !highlightText) return;
-                        setCitedRange(
-                          citedItemRange(items as { str: string }[], highlightText),
-                        );
+                        pageItems.current.set(page, items as { str: string }[]);
+                        setItemsVersion((v) => v + 1);
                       }}
-                      customTextRenderer={
-                        page === highlightPage && citedRange
-                          ? ({ itemIndex, str }) =>
-                              itemIndex >= citedRange[0] && itemIndex <= citedRange[1]
-                                ? `<mark class="pt-cite">${escapeHtml(str)}</mark>`
-                                : escapeHtml(str)
-                          : undefined
-                      }
+                      customTextRenderer={textRenderers.get(page)}
                       onLoadSuccess={(p) => {
                         if (page === 1 && !pageSize) {
                           setPageSize({ width: p.originalWidth, height: p.originalHeight });
@@ -418,6 +459,32 @@ export function PdfViewer({
             <ToolbarAction onClick={() => handleAction("ask")}>Ask AI</ToolbarAction>
             <ToolbarAction onClick={() => handleAction("explain")}>Explain</ToolbarAction>
             <ToolbarAction onClick={() => handleAction("summarize")}>Summarize</ToolbarAction>
+            <span className="w-px h-4 bg-white/20 mx-0.5" />
+            {HIGHLIGHT_COLORS.map((color) => (
+              <button
+                key={color}
+                onClick={() => {
+                  if (!selection) return;
+                  onHighlight?.(selection.text, currentPage, color);
+                  setSelection(null);
+                  window.getSelection()?.removeAllRanges();
+                }}
+                title={`Highlight ${color}`}
+                aria-label={`Highlight ${color}`}
+                className={`w-5 h-5 rounded-full mx-0.5 border border-white/30 hover:scale-110 transition-transform pt-swatch-${color}`}
+              />
+            ))}
+            <span className="w-px h-4 bg-white/20 mx-0.5" />
+            <ToolbarAction
+              onClick={() => {
+                if (!selection) return;
+                onSaveQuote?.(selection.text, currentPage);
+                setSelection(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+            >
+              Save quote
+            </ToolbarAction>
           </div>
         )}
       </div>

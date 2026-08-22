@@ -1,3 +1,8 @@
+export interface Tag {
+  id: string;
+  name: string;
+}
+
 export interface Paper {
   id: string;
   title: string;
@@ -12,6 +17,9 @@ export interface Paper {
   embedding_status: "not_embedded" | "queued" | "embedding" | "embedded" | "failed";
   last_opened_at: string | null;
   last_page: number | null;
+  is_favorite: boolean;
+  tags: Tag[];
+  collections: { id: string; name: string }[];
 }
 
 export interface Citation {
@@ -53,4 +61,22 @@ export interface SearchHit {
   page_number: number;
   score: number;
   match_count: number;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  created_at: string;
+  paper_count: number;
+}
+
+export interface Note {
+  id: string;
+  paper_id: string;
+  content: string;
+  quoted_text: string | null;
+  page_number: number | null;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
 }

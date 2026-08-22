@@ -1,4 +1,8 @@
 import { Card } from "./Card";
+import { FavoriteButton } from "../FavoriteButton";
+import { AddToCollection } from "../AddToCollection";
+import { PaperActions } from "../PaperActions";
+import type { Paper } from "../../lib/types";
 
 export type PaperTileStatus =
   | "needs_file"
@@ -8,6 +12,7 @@ export type PaperTileStatus =
   | "failed";
 
 interface PaperTileProps{
+    paper: Paper;
     title: string;
     authors: string[];
     venue: string | null;
@@ -35,14 +40,17 @@ const STATUS_CLASSES: Record<PaperTileStatus, string> = {
 
 //A paper in the library grid. Badge shows real pipeline state, since we
 //don't track actual reading position yet
-export function PaperTile({ title, authors, venue, year, addedDate, status, tags = [] }: PaperTileProps){
+export function PaperTile({ paper, title, authors, venue, year, addedDate, status, tags = [] }: PaperTileProps){
     return (
     <Card interactive className="flex flex-col gap-3 h-full">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="h-1 w-10 rounded-full bg-accent-primary/60" />
-        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[status]}`}>
-          {STATUS_LABEL[status]}
-        </span>
+        <div className="flex items-center gap-1">
+          <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[status]}`}>
+            {STATUS_LABEL[status]}
+          </span>
+          <FavoriteButton paperId={paper.id} isFavorite={paper.is_favorite} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">
@@ -74,7 +82,13 @@ export function PaperTile({ title, authors, venue, year, addedDate, status, tags
         </div>
       )}
 
-      <p className="text-xs text-text-muted mt-auto pt-2">Added {addedDate}</p>
+      <div className="flex items-center justify-between gap-2 mt-auto pt-2">
+        <p className="text-xs text-text-muted">Added {addedDate}</p>
+        <div className="flex items-center gap-0.5">
+          <AddToCollection paper={paper} />
+          <PaperActions paper={paper} />
+        </div>
+      </div>
     </Card>
   );
 }

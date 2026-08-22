@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/Button";
 import { AttachPdfButton } from "../components/AttachPdfButton";
 import { AIPanel } from "../components/AIPanel";
+import { FavoriteButton } from "../components/FavoriteButton";
+import { TagInput } from "../components/TagInput";
+import { AddToCollection } from "../components/AddToCollection";
+import { PaperActions } from "../components/PaperActions";
 import { PdfViewer } from "../components/PdfViewer";
 import { useApiClient } from "../lib/api";
-import type { Citation, Paper } from "../lib/types";
+import type { Citation, Note, Paper } from "../lib/types";
 
 const TRANSIENT_STATUSES = new Set(["queued", "embedding"]);
 
@@ -36,6 +40,8 @@ export function ReadingPage() {
     () => localStorage.getItem(COLLAPSED_KEY) === "1",
   );
   const [highlight, setHighlight] = useState<string>();
+  const [pendingQuote, setPendingQuote] = useState<{ text: string; page: number; nonce: number }>();
+  const [showTags, setShowTags] = useState(false);
   const dragging = useRef(false);
   const openedRef = useRef(false);
   const pageTimer = useRef<number | undefined>(undefined);
@@ -102,6 +108,30 @@ export function ReadingPage() {
     setPendingQuestion((prev) => ({ text: question, nonce: (prev?.nonce ?? 0) + 1 }));
   }
 
+  const { data: notes } = useQuery({
+    queryKey: ["notes", paperId],
+    queryFn: () => request<Note[]>(`/api/papers/${paperId}/notes`),
+    enabled: !!paperId,
+  });
+
+  // Every saved highlight paints on the page it came from.
+  const highlights = (notes ?? [])
+    .filter((n) => n.quoted_text && n.page_number)
+    .map((n) => ({ text: n.quoted_text!, page: n.page_number!, color: n.color }));
+
+  const createHighlight = useMutation({
+    mutationFn: ({ quote, page, color }: { quote: string; page: number; color: string }) =>
+      request<Note>(`/api/papers/${paperId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ content: "", quoted_text: quote, page_number: page, color }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", paperId] }),
+  });
+
+  function handleSaveQuote(quote: string, page: number) {
+    setPendingQuote((prev) => ({ text: quote, page, nonce: (prev?.nonce ?? 0) + 1 }));
+  }
+
   function handleCitationClick(citation: Citation) {
     setHighlight(citation.text);
     setTargetPage((prev) => ({ page: citation.page_number, nonce: (prev?.nonce ?? 0) + 1 }));
@@ -158,6 +188,27 @@ export function ReadingPage() {
           <h1 className="font-serif text-base text-text-primary truncate">{paper.title}</h1>
         </div>
 
+        <div className="flex items-center gap-1 shrink-0">
+          <FavoriteButton
+            paperId={paper.id}
+            isFavorite={paper.is_favorite}
+            invalidate={[["paper", paper.id]]}
+          />
+          <AddToCollection paper={paper} invalidate={[["paper", paper.id]]} />
+          <button
+            onClick={() => setShowTags((open) => !open)}
+            title="Tags"
+            className={`text-xs px-2 py-1 rounded-md transition-colors ${
+              showTags
+                ? "bg-accent-info-soft text-accent-info"
+                : "text-text-muted hover:text-text-primary hover:bg-bg-secondary"
+            }`}
+          >
+            Tags{paper.tags.length > 0 && ` (${paper.tags.length})`}
+          </button>
+          <PaperActions paper={paper} />
+        </div>
+
         {paper.has_file && paper.processing_status === "unprocessed" && (
           <Button variant="secondary" size="sm" onClick={handleProcess} disabled={pipelineBusy}>
             {pipelineBusy ? "Processing…" : "Process this paper"}
@@ -170,6 +221,14 @@ export function ReadingPage() {
         )}
       </div>
 
+      {showTags && (
+        <div className="border-b border-border px-6 py-3 bg-surface">
+          <div className="max-w-md">
+            <TagInput paper={paper} />
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 bg-bg-secondary">
           {paper.has_file ? (
@@ -178,6 +237,11 @@ export function ReadingPage() {
                 fileUrl={pdfUrl}
                 title={paper.title}
                 onAsk={handleHighlightAsk}
+                onSaveQuote={handleSaveQuote}
+                highlights={highlights}
+                onHighlight={(quote, page, color) =>
+                  createHighlight.mutate({ quote, page, color })
+                }
                 onPageChange={handlePageChange}
                 targetPage={targetPage}
                 highlightText={highlight}
@@ -219,6 +283,7 @@ export function ReadingPage() {
               width={panelWidth}
               embeddingStatus={paper.embedding_status}
               pendingQuestion={pendingQuestion}
+              pendingQuote={pendingQuote}
               onCollapse={() => toggleCollapsed(true)}
               onCitationClick={handleCitationClick}
             />

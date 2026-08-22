@@ -21,3 +21,17 @@ def test_single_page_pdf():
 
     assert len(pages) == 1
     assert pages[0].page_number == 1
+
+
+def test_cid_artifacts_are_stripped_from_extracted_text():
+    from app.parsing.pdf_parser import _clean
+
+    # What a maths-heavy line looks like before cleaning.
+    raw = "X (cid:96)+1 = σ(Dˆ− 1 2  Aˆ X (cid:96) W (cid:96) ), (1)"
+
+    cleaned = _clean(raw)
+
+    assert "cid:" not in cleaned
+    assert "  " not in cleaned
+    # The actual maths survives — only the unrecoverable markers go.
+    assert "σ" in cleaned and "(1)" in cleaned

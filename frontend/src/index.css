@@ -109,9 +109,31 @@ h1, h2, h3, .font-content-heading {
   background: transparent;
 }
 
-.pt-cite {
-  background-color: rgba(193, 96, 46, 0.32);
+/* Pastels chosen to sit against the warm paper palette rather than fight it.
+ * multiply keeps the canvas glyphs readable through the tint. */
+.pt-hl {
   mix-blend-mode: multiply;
   color: transparent;
   border-radius: 2px;
 }
+.pt-hl-yellow { background-color: rgba(240, 205, 120, 0.45); }
+.pt-hl-green  { background-color: rgba(160, 205, 165, 0.45); }
+.pt-hl-blue   { background-color: rgba(155, 190, 225, 0.45); }
+.pt-hl-pink   { background-color: rgba(232, 168, 180, 0.45); }
+.pt-hl-purple { background-color: rgba(196, 172, 220, 0.45); }
+/* Citation clicks use the accent colour, distinct from a saved highlight. */
+.pt-hl-cite   { background-color: rgba(193, 96, 46, 0.32); }
+
+/* Solid versions for the toolbar swatches, which sit on a dark bar. */
+.pt-swatch-yellow { background-color: #f0cd78; }
+.pt-swatch-green  { background-color: #a0cda5; }
+.pt-swatch-blue   { background-color: #9bbee1; }
+.pt-swatch-pink   { background-color: #e8a8b4; }
+.pt-swatch-purple { background-color: #c4acdc; }
+
+/* Left rule on a note, matching the highlight colour it came from. */
+.pt-border-yellow { border-color: #f0cd78; }
+.pt-border-green  { border-color: #a0cda5; }
+.pt-border-blue   { border-color: #9bbee1; }
+.pt-border-pink   { border-color: #e8a8b4; }
+.pt-border-purple { border-color: #c4acdc; }

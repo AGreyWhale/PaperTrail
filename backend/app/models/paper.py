@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -37,6 +37,13 @@ class Paper(Base):
         String(20), nullable=False, server_default="not_embedded"
     )
 
+    # server_default so the NOT NULL column can land on a table that already
+    # has rows. false() not the string "false" — SQLite has no boolean type and
+    # stores that string as truthy, which made every new paper favorited.
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+
     # Reading progress, for the home page's Continue Reading section.
     # Both null until the paper is opened for the first time.
     last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -48,4 +55,9 @@ class Paper(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    tags = relationship("Tag", secondary="paper_tags", back_populates="papers")
+    collections = relationship(
+        "Collection", secondary="collection_papers", back_populates="papers"
     )

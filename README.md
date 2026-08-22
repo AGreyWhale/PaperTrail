@@ -1,5 +1,7 @@
 # PaperTrail
 
+![CI](https://github.com/AGreyWhale/PaperTrail/actions/workflows/ci.yml/badge.svg)
+
 An AI research paper assistant: keep a personal library of papers, attach the PDFs, and ask questions that get answered with citations back to the exact page.
 
 
@@ -19,8 +21,9 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Answers stream in.** `/ask/stream` sends citations first, then tokens as the model produces them, so the panel fills in progressively instead of waiting on a complete response. Retrieval and validation run before the first byte, so a 404/422 is still a real status code rather than an error buried inside a 200.
 - **Library-wide semantic search.** `GET /api/search?q=…` embeds the query once and searches every embedded paper you own. Results are grouped **by paper, not by chunk** — three matching passages in one paper is one result showing its strongest excerpt and a match count, not three near-duplicate rows.
 - **A home page separate from the library grid.** Library summary, Continue reading (real positions, persisted as you scroll), and LLM-generated starter questions cached per paper.
+- **Favorites, tags, collections, and notes.** Tags and collections are proper relational models (per-owner unique tag names, many-to-many joins), so they stay filterable. Notes can stand alone or carry the passage they came from — **Save quote** in the PDF highlight toolbar opens a composer pre-filled with the selection, and notes live in their own tab beside Ask rather than crowding it.
 - **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
-- **86 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, and reading progress.
+- **123 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
 
 ## What's in progress
 
@@ -28,8 +31,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 | --- | --- |
 | Retry / observability | A failed embedding job sets `embedding_status="failed"`, but there's no retry policy or job-status endpoint yet |
 | `torch` install size | `sentence-transformers` pulls in torch, so a full `make install` is a large download. The test suite fakes it out and never needs it |
-| Notes | No notes feature yet — the home page deliberately omits a Recent Notes section rather than stubbing one |
-| Collections | Same: no collections model yet, so no Collections section |
+| Home page sections | Notes and collections now exist, but the home page doesn't surface Recent Notes / Collections yet |
 | Library-wide Q&A | Search spans the library, but `/ask` is still one paper at a time |
 
 ---
@@ -49,7 +51,7 @@ backend/
   app/
     api/              FastAPI routers (health, papers)
     core/             config, database session, Clerk auth dependency
-    models/           SQLAlchemy models (Paper, Chunk)
+    models/           SQLAlchemy models (Paper, Chunk, Tag, Collection, Note)
     schemas/          Pydantic request/response models
     repositories/     all DB access lives here, one per model
     services/         business logic (papers, uploads, processing, DOI lookup, embedding, search, RAG)
@@ -173,6 +175,16 @@ All `/api` routes require a Clerk bearer token.
 | `GET` | `/api/search?q=…&limit=…` | Library-wide search, one result per paper |
 | `GET` | `/api/papers/continue-reading` | Most recently opened papers, with reading position |
 | `POST` | `/api/papers/{id}/opened?page=…` | Record a visit and reading position |
+| `DELETE` | `/api/papers/{id}` | Delete a paper, its chunks, notes, file and vectors |
+| `PATCH` | `/api/papers/{id}/favorite` | Toggle favorite |
+| `GET` | `/api/papers?tag={tag_id}` | List papers, optionally filtered by tag |
+| `POST` / `DELETE` | `/api/papers/{id}/tags`, `/api/papers/{id}/tags/{tag_id}` | Attach / detach a tag |
+| `GET` | `/api/tags` | The owner's tags, for autocomplete and filtering |
+| `POST` / `GET` / `DELETE` | `/api/collections`, `/api/collections/{id}` | Manage collections |
+| `POST` / `DELETE` | `/api/collections/{id}/papers/{paper_id}` | Add / remove a paper |
+| `GET` | `/api/collections/{id}/papers` | Papers in a collection |
+| `POST` / `GET` | `/api/papers/{id}/notes` | Create / list notes on a paper |
+| `PATCH` / `DELETE` | `/api/notes/{id}` | Edit / delete a note |
 | `GET` | `/api/papers/{id}/suggested-questions` | Starter questions, generated once then cached |
 | `POST` | `/api/papers/{id}/ask` | Ask a question, answered from the paper with citations |
 | `POST` | `/api/papers/{id}/ask/stream` | Same, streamed as NDJSON (`citations` → `token`… → `done`) |

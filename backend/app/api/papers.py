@@ -15,19 +15,26 @@ from app.integrations.crossref.client import CrossRefClient
 from app.integrations.embeddings.local_client import EmbeddingsClient
 from app.integrations.llm.client import LLMClient, LLMUnavailableError
 from app.repositories.chunk_repository import ChunkRepository
+from app.repositories.note_repository import NoteRepository
 from app.repositories.paper_repository import PaperRepository
+from app.repositories.tag_repository import TagRepository
 from app.schemas.paper import (
     AskAnswerOut,
     AskRequest,
     ChunkOut,
+    NoteCreate,
+    NoteOut,
     PaperCreate,
     PaperOut,
     SimilarChunkOut,
+    TagCreate,
 )
 from app.services.doi_lookup_service import DoiLookupService
 from app.services.embedding_service import EmbeddingService
 from app.services.paper_processing_service import PaperProcessingService
+from app.services.note_service import NoteService
 from app.services.paper_service import PaperService
+from app.services.tag_service import TagService
 from app.services.rag_service import RagService
 from app.services.search_service import SearchService
 from app.storage.base import FileStorage
@@ -53,6 +60,12 @@ def get_paper_processing_service(
     storage: FileStorage = Depends(get_file_storage),
 ) -> PaperProcessingService:
     return PaperProcessingService(PaperRepository(db), ChunkRepository(db), storage)
+
+def get_tag_service(db: Session = Depends(get_db)) -> TagService:
+    return TagService(TagRepository(db), PaperRepository(db))
+
+def get_note_service(db: Session = Depends(get_db)) -> NoteService:
+    return NoteService(NoteRepository(db), PaperRepository(db))
 
 def get_doi_lookup_service() -> DoiLookupService:
     settings = get_settings()
@@ -81,6 +94,14 @@ def get_embeddings_client() -> EmbeddingsClient:
 def get_vector_store() -> VectorStore:
     settings = get_settings()
     return VectorStore(chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port))
+
+def get_optional_vector_store() -> VectorStore | None:
+    #Deleting a paper shouldn't fail just because Chroma is unreachable — the
+    #row still goes, and search already skips vectors with no matching paper
+    try:
+        return get_vector_store()
+    except Exception:
+        return None
 
 def get_search_service(
     db: Session = Depends(get_db),
@@ -163,10 +184,11 @@ def add_paper(
 
 @router.get("", response_model=list[PaperOut])
 def list_papers(
-    service: PaperService = Depends(get_paper_service),
+    tag: uuid.UUID | None = Query(None, description="Only papers carrying this tag"),
     user_id: str = Depends(get_current_user_id),
-    ) -> list[PaperOut]:
-    return service.list_papers(owner_id=user_id)
+    service: PaperService = Depends(get_paper_service),
+) -> list[PaperOut]:
+    return service.list_papers(owner_id=user_id, tag_id=tag)
 
 @router.get("/{paper_id}", response_model=PaperOut)
 def get_paper(
@@ -176,6 +198,66 @@ def get_paper(
     ) -> PaperOut:
     return service.get_paper(paper_id, owner_id=user_id)
 
+
+@router.delete("/{paper_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_paper(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+    vector_store: VectorStore | None = Depends(get_optional_vector_store),
+) -> None:
+    service.delete_paper(paper_id, owner_id=user_id, vector_store=vector_store)
+
+@router.patch("/{paper_id}/favorite", response_model=PaperOut)
+def toggle_favorite(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+) -> PaperOut:
+    return service.toggle_favorite(paper_id, owner_id=user_id)
+
+@router.post("/{paper_id}/tags", response_model=PaperOut)
+def add_tag(
+    paper_id: uuid.UUID,
+    data: TagCreate,
+    user_id: str = Depends(get_current_user_id),
+    service: TagService = Depends(get_tag_service),
+) -> PaperOut:
+    #Creates the tag for this owner if it doesn't exist yet
+    return service.add_to_paper(paper_id, owner_id=user_id, name=data.name)
+
+@router.delete("/{paper_id}/tags/{tag_id}", response_model=PaperOut)
+def remove_tag(
+    paper_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: TagService = Depends(get_tag_service),
+) -> PaperOut:
+    return service.remove_from_paper(paper_id, tag_id, owner_id=user_id)
+
+@router.post("/{paper_id}/notes", response_model=NoteOut, status_code=201)
+def create_note(
+    paper_id: uuid.UUID,
+    data: NoteCreate,
+    user_id: str = Depends(get_current_user_id),
+    service: NoteService = Depends(get_note_service),
+) -> NoteOut:
+    return service.create(
+        paper_id,
+        owner_id=user_id,
+        content=data.content,
+        quoted_text=data.quoted_text,
+        page_number=data.page_number,
+        color=data.color,
+    )
+
+@router.get("/{paper_id}/notes", response_model=list[NoteOut])
+def list_notes(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: NoteService = Depends(get_note_service),
+) -> list[NoteOut]:
+    return service.list_for_paper(paper_id, owner_id=user_id)
 
 @router.post("/{paper_id}/file", response_model=PaperOut)
 async def upload_paper_file(
