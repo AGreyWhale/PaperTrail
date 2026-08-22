@@ -136,3 +136,41 @@ class NoteCreate(BaseModel):
 
 class NoteUpdate(BaseModel):
     content: str
+
+class MultiPaperRequest(BaseModel):
+    #Shared by compare and literature review — both start from "pick 2+ papers"
+    paper_ids: list[uuid.UUID]
+
+class ComparisonRowOut(BaseModel):
+    #One paper's column in the comparison table
+    paper_id: uuid.UUID
+    title: str
+    datasets: str
+    architecture: str
+    evaluation_metrics: str
+    strengths: str
+    weaknesses: str
+    future_work: str
+
+class ComparisonOut(BaseModel):
+    papers: list[ComparisonRowOut]
+
+class ReviewSourceOut(BaseModel):
+    paper_id: uuid.UUID
+    title: str
+    citation: str
+
+class ThemeCellOut(BaseModel):
+    #What one paper says about one theme
+    paper_id: uuid.UUID
+    position: str
+
+class ThemeOut(BaseModel):
+    theme: str
+    cells: list[ThemeCellOut]
+
+class LiteratureReviewOut(BaseModel):
+    #themes render as a themes-by-papers table, markdown as the narrative below
+    themes: list[ThemeOut]
+    markdown: str
+    sources: list[ReviewSourceOut]

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import collections, health, notes, papers, search, tags
+from app.api import collections, health, notes, papers, search, synthesis, tags
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -21,3 +21,4 @@ app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
 app.include_router(notes.router, prefix="/api")
+app.include_router(synthesis.router, prefix="/api")

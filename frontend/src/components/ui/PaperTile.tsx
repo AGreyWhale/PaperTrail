@@ -20,6 +20,9 @@ interface PaperTileProps{
     addedDate: string;
     status: PaperTileStatus;
     tags?: string[];
+    //Only rendered in selection mode; absent everywhere else
+    selected?: boolean;
+    onToggleSelect?: () => void;
 }
 
 const STATUS_LABEL: Record<PaperTileStatus, string> = {
@@ -40,11 +43,37 @@ const STATUS_CLASSES: Record<PaperTileStatus, string> = {
 
 //A paper in the library grid. Badge shows real pipeline state, since we
 //don't track actual reading position yet
-export function PaperTile({ paper, title, authors, venue, year, addedDate, status, tags = [] }: PaperTileProps){
+export function PaperTile({ paper, title, authors, venue, year, addedDate, status, tags = [], selected, onToggleSelect }: PaperTileProps){
     return (
-    <Card interactive className="flex flex-col gap-3 h-full">
+    <Card
+      interactive
+      className={`flex flex-col gap-3 h-full ${
+        selected ? "border-accent-primary ring-1 ring-accent-primary/40" : ""
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
-        <div className="h-1 w-10 rounded-full bg-accent-primary/60" />
+        {onToggleSelect ? (
+          <button
+            onClick={(e) => {
+              // Tiles sit inside a <Link>; selecting must not navigate.
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            role="checkbox"
+            aria-checked={!!selected}
+            aria-label={selected ? "Deselect paper" : "Select paper"}
+            className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] transition-colors ${
+              selected
+                ? "bg-accent-primary border-accent-primary text-white"
+                : "border-border-strong text-transparent hover:border-accent-primary"
+            }`}
+          >
+            ✓
+          </button>
+        ) : (
+          <div className="h-1 w-10 rounded-full bg-accent-primary/60" />
+        )}
         <div className="flex items-center gap-1">
           <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[status]}`}>
             {STATUS_LABEL[status]}

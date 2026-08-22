@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector rather than plain postgres: same Postgres 16, but with
+    # the vector extension available so CREATE EXTENSION works.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: papertrail
@@ -16,21 +18,13 @@ services:
       timeout: 5s
       retries: 5
 
+  # Only needed when EMBEDDING_BACKEND=celery. The background_tasks backend
+  # runs embedding in-process and needs no broker at all.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
 
-  chroma:
-    image: chromadb/chroma:latest
-    restart: unless-stopped
-    ports:
-      # Host 8100, since 8000 is already the local FastAPI backend.
-      - "8100:8000"
-    volumes:
-      - papertrail_chroma_data:/data
-
 volumes:
   papertrail_postgres_data:
-  papertrail_chroma_data:

@@ -80,3 +80,40 @@ export interface Note {
   created_at: string;
   updated_at: string;
 }
+
+export interface ComparisonRow {
+  paper_id: string;
+  title: string;
+  datasets: string;
+  architecture: string;
+  evaluation_metrics: string;
+  strengths: string;
+  weaknesses: string;
+  future_work: string;
+}
+
+export interface Comparison {
+  papers: ComparisonRow[];
+}
+
+export interface ReviewSource {
+  paper_id: string;
+  title: string;
+  citation: string;
+}
+
+export interface ThemeCell {
+  paper_id: string;
+  position: string;
+}
+
+export interface Theme {
+  theme: string;
+  cells: ThemeCell[];
+}
+
+export interface LiteratureReview {
+  themes: Theme[];
+  markdown: string;
+  sources: ReviewSource[];
+}

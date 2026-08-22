@@ -118,10 +118,9 @@ class PaperService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
         return PaperOut.from_model(self.repository.set_favorite(paper, not paper.is_favorite))
 
-    def delete_paper(self, paper_id: uuid.UUID, *, owner_id: str, vector_store=None) -> None:
-        #The row cascades to chunks/notes/links, but the stored PDF and the
-        #embedded vectors live outside Postgres and have to be cleared here or
-        #they outlive the paper
+    def delete_paper(self, paper_id: uuid.UUID, *, owner_id: str) -> None:
+        #The row cascades to chunks (embeddings included), notes and links. Only
+        #the stored PDF lives outside Postgres, so that's all this clears
         paper = self.repository.get(paper_id, owner_id=owner_id)
         if paper is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
@@ -131,5 +130,3 @@ class PaperService:
 
         if storage_key and self.storage is not None:
             self.storage.delete(key=storage_key)
-        if vector_store is not None:
-            vector_store.delete_for_paper(paper_id)

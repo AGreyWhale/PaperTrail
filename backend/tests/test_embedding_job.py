@@ -1,4 +1,3 @@
-import chromadb
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -6,9 +5,8 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base
 from app.models.chunk import Chunk
 from app.models.paper import Paper
-from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
-from tests.fakes import FakeEmbeddingsClient
+from tests.fakes import FakeChunkSearch, FakeEmbeddingsClient
 
 
 def _make_db_session():
@@ -47,7 +45,6 @@ def test_run_embedding_job_marks_paper_embedded():
         owner_id="user_1",
         db=db,
         embeddings_client=FakeEmbeddingsClient(),
-        vector_store=VectorStore(chromadb.EphemeralClient()),
     )
 
     db.refresh(paper)
@@ -61,7 +58,7 @@ def test_run_embedding_job_stores_retrievable_vectors():
         owner_id="user_1",
         chunk_texts=["Attention mechanisms explained here.", "A completely different topic."],
     )
-    vector_store = VectorStore(chromadb.EphemeralClient())
+    search = FakeChunkSearch(db)
     embeddings_client = FakeEmbeddingsClient()
 
     run_embedding_job(
@@ -69,14 +66,13 @@ def test_run_embedding_job_stores_retrievable_vectors():
         owner_id="user_1",
         db=db,
         embeddings_client=embeddings_client,
-        vector_store=vector_store,
     )
 
     # Querying a chunk's exact text with the deterministic fake embedder
     # should return that chunk with a near-perfect score.
     query_embedding = embeddings_client.embed_query("Attention mechanisms explained here.")
-    results = vector_store.query_within_paper(
-        owner_id="user_1", paper_id=paper.id, query_embedding=query_embedding, top_k=1
+    results = search.find_similar_within_paper(
+        paper.id, owner_id="user_1", query_embedding=query_embedding, top_k=1
     )
 
     assert len(results) == 1
@@ -98,7 +94,6 @@ def test_run_embedding_job_sets_failed_status_on_error():
             owner_id="user_1",
             db=db,
             embeddings_client=BrokenEmbeddingsClient(),
-            vector_store=VectorStore(chromadb.EphemeralClient()),
         )
     except RuntimeError:
         pass
@@ -110,7 +105,7 @@ def test_run_embedding_job_sets_failed_status_on_error():
 def test_run_embedding_job_scopes_vectors_by_owner():
     db = _make_db_session()
     paper = _make_paper_with_chunks(db, owner_id="user_alice", chunk_texts=["Alice's content."])
-    vector_store = VectorStore(chromadb.EphemeralClient())
+    search = FakeChunkSearch(db)
     embeddings_client = FakeEmbeddingsClient()
 
     run_embedding_job(
@@ -118,12 +113,11 @@ def test_run_embedding_job_scopes_vectors_by_owner():
         owner_id="user_alice",
         db=db,
         embeddings_client=embeddings_client,
-        vector_store=vector_store,
     )
 
     # Same paper_id, different owner, should find nothing.
     query_embedding = embeddings_client.embed_query("Alice's content.")
-    results = vector_store.query_within_paper(
-        owner_id="user_bob", paper_id=paper.id, query_embedding=query_embedding, top_k=5
+    results = search.find_similar_within_paper(
+        paper.id, owner_id="user_bob", query_embedding=query_embedding, top_k=5
     )
     assert results == []

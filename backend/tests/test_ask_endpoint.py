@@ -2,32 +2,31 @@ import io
 import json
 import uuid
 
-import chromadb
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from app.api.papers import (
     get_embedding_enqueue_fn,
     get_embeddings_client,
+    get_chunk_repository,
     get_llm_client,
-    get_vector_store,
 )
 from app.core.auth import get_current_user_id
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.integrations.llm.client import LLMUnavailableError
 from app.main import app
-from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
-from tests.fakes import FakeEmbeddingsClient, FakeLLMClient
+from tests.fakes import FakeChunkSearch, FakeEmbeddingsClient, FakeLLMClient
 from tests.pdf_helpers import make_test_pdf
 
 
 def _setup_embedded_paper(client, *, llm_client) -> str:
     #Same setup as test_search_endpoint's helper, plus a fake LLM
     fake_embeddings_client = FakeEmbeddingsClient()
-    fake_vector_store = VectorStore(chromadb.EphemeralClient())
     app.dependency_overrides[get_embeddings_client] = lambda: fake_embeddings_client
-    app.dependency_overrides[get_vector_store] = lambda: fake_vector_store
+    # Resolved with the request's own session, so the fake reads the same DB.
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
     app.dependency_overrides[get_llm_client] = lambda: llm_client
 
     def _run_synchronously(paper_id: str, owner_id: str) -> None:
@@ -39,7 +38,6 @@ def _setup_embedded_paper(client, *, llm_client) -> str:
                 owner_id=owner_id,
                 db=db,
                 embeddings_client=fake_embeddings_client,
-                vector_store=fake_vector_store,
             )
         finally:
             db_generator.close()
@@ -80,7 +78,7 @@ def test_ask_returns_answer_with_citations(client):
 def test_ask_requires_embedded_paper(client):
     app.dependency_overrides[get_llm_client] = lambda: FakeLLMClient()
     app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
-    app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
 
     create_response = client.post(
         "/api/papers", json={"title": "Not Embedded", "authors": ["Someone"]}
@@ -108,7 +106,7 @@ def test_ask_returns_503_without_llm_key(client, monkeypatch):
     # the cached Settings so a real key in .env can't mask the failure.
     monkeypatch.setattr(get_settings(), "llm_api_key", "")
     app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
-    app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
 
     create_response = client.post(
         "/api/papers", json={"title": "Some Paper", "authors": ["Someone"]}
@@ -186,7 +184,7 @@ def test_ask_stream_reports_llm_failure_as_an_error_event(client):
 def test_ask_stream_still_422s_before_streaming_starts(client):
     app.dependency_overrides[get_llm_client] = lambda: StreamingFakeLLMClient()
     app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
-    app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
 
     create_response = client.post(
         "/api/papers", json={"title": "Not Embedded", "authors": ["Someone"]}

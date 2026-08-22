@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,9 +31,12 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50
 
     # Embeddings run locally via sentence-transformers, so no key here.
+    # Vectors live in Postgres via pgvector — no separate vector service.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
-    chroma_host: str = "localhost"
-    chroma_port: int = 8100
+
+    # "celery" needs a worker process and Redis; "background_tasks" runs the
+    # job in-process after the response, which is what free tiers can host.
+    embedding_backend: Literal["celery", "background_tasks"] = "celery"
 
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/0"

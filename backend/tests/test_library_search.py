@@ -1,4 +1,3 @@
-import chromadb
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -10,9 +9,8 @@ from app.models.chunk import Chunk
 from app.models.paper import Paper
 from app.repositories.paper_repository import PaperRepository
 from app.services.search_service import SearchService
-from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
-from tests.fakes import FakeEmbeddingsClient
+from tests.fakes import FakeChunkSearch, FakeEmbeddingsClient
 
 
 def _library(papers: dict[str, list[str]], *, owner_id: str = "user_1"):
@@ -24,7 +22,6 @@ def _library(papers: dict[str, list[str]], *, owner_id: str = "user_1"):
     db = sessionmaker(bind=engine)()
 
     embeddings_client = FakeEmbeddingsClient()
-    vector_store = VectorStore(chromadb.EphemeralClient())
 
     for title, texts in papers.items():
         paper = Paper(
@@ -45,10 +42,9 @@ def _library(papers: dict[str, list[str]], *, owner_id: str = "user_1"):
             owner_id=owner_id,
             db=db,
             embeddings_client=embeddings_client,
-            vector_store=vector_store,
         )
 
-    service = SearchService(PaperRepository(db), embeddings_client, vector_store)
+    service = SearchService(PaperRepository(db), embeddings_client, FakeChunkSearch(db))
     return db, service
 
 

@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from app.integrations.embeddings.local_client import EmbeddingsClient
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
-from app.vectorstore.client import VectorStore
 
 
 def run_embedding_job(
@@ -14,10 +13,9 @@ def run_embedding_job(
     owner_id: str,
     db: Session,
     embeddings_client: EmbeddingsClient,
-    vector_store: VectorStore,
 ) -> None:
-    #Fetches a paper's chunks, embeds them, stores the vectors.
-    #Everything is injected, so tests call this with fakes and no Celery
+    #Fetches a paper's chunks, embeds them, writes the vectors back onto the
+    #chunk rows. Everything is injected, so tests call this with fakes
     paper_repository = PaperRepository(db)
     chunk_repository = ChunkRepository(db)
 
@@ -30,17 +28,8 @@ def run_embedding_job(
 
     try:
         chunks = chunk_repository.list_for_paper(paper.id)
-        texts = [c.text for c in chunks]
-        embeddings = embeddings_client.embed_documents(texts)
-
-        vector_store.upsert_chunks(
-            owner_id=owner_id,
-            paper_id=paper.id,
-            chunk_ids=[c.id for c in chunks],
-            texts=texts,
-            embeddings=embeddings,
-            page_numbers=[c.page_number for c in chunks],
-        )
+        embeddings = embeddings_client.embed_documents([c.text for c in chunks])
+        chunk_repository.store_embeddings(list(zip([c.id for c in chunks], embeddings)))
     except Exception:
         paper_repository.set_embedding_status(paper, "failed")
         raise

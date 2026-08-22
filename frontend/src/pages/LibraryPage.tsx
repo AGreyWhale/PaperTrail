@@ -8,6 +8,8 @@ import { PaperTile, type PaperTileStatus } from "../components/ui/PaperTile";
 import { AddPaperByDoi } from "../components/AddPaperByDoi";
 import { useApiClient } from "../lib/api";
 import { CollectionsBar } from "../components/CollectionsBar";
+import { SelectionBar } from "../components/SelectionBar";
+import { Button } from "../components/ui/Button";
 import { LibraryStats } from "../components/library/LibraryStats";
 import { RecentlyAdded } from "../components/library/RecentlyAdded";
 import { GettingStarted } from "../components/library/GettingStarted";
@@ -35,6 +37,8 @@ export function LibraryPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeCollectionId = searchParams.get("collection");
   const [debounced, setDebounced] = useState("");
@@ -89,6 +93,15 @@ export function LibraryPage() {
         : request<Paper[]>(`/api/papers${tagFilter ? `?tag=${tagFilter}` : ""}`),
   });
 
+  function toggleSelected(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function exitSelection() {
+    setSelecting(false);
+    setSelected([]);
+  }
+
   function refreshPapers() {
     queryClient.invalidateQueries({ queryKey: ["papers"] });
   }
@@ -113,7 +126,16 @@ export function LibraryPage() {
       </header>
 
       <Show when="signed-in">
-        <CollectionsBar selected={collectionFilter} onSelect={setCollectionFilter} />
+        {selecting ? (
+          <SelectionBar selected={selected} onClear={exitSelection} />
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <CollectionsBar selected={collectionFilter} onSelect={setCollectionFilter} />
+            <Button size="sm" variant="ghost" onClick={() => setSelecting(true)}>
+              Select to compare
+            </Button>
+          </div>
+        )}
       </Show>
 
       <Show when="signed-in">
@@ -211,6 +233,8 @@ export function LibraryPage() {
                     year={paper.year}
                     addedDate={formatDate(paper.created_at)}
                     status={deriveStatus(paper)}
+                    selected={selected.includes(paper.id)}
+                    onToggleSelect={selecting ? () => toggleSelected(paper.id) : undefined}
                   />
                 </Link>
               ))}

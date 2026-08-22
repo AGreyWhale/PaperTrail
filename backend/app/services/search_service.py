@@ -4,8 +4,8 @@ import uuid
 from fastapi import HTTPException, status
 
 from app.integrations.embeddings.local_client import EmbeddingsClient
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
-from app.vectorstore.client import VectorStore
 
 #How many chunks to pull per requested paper before grouping collapses them
 CHUNKS_PER_PAPER = 4
@@ -71,11 +71,11 @@ class SearchService:
         self,
         paper_repository: PaperRepository,
         embeddings_client: EmbeddingsClient,
-        vector_store: VectorStore,
+        chunk_repository: ChunkRepository,
     ):
         self.paper_repository = paper_repository
         self.embeddings_client = embeddings_client
-        self.vector_store = vector_store
+        self.chunk_repository = chunk_repository
 
     def search_within_paper(
         self, paper_id: uuid.UUID, *, owner_id: str, query: str, top_k: int = 5
@@ -89,8 +89,8 @@ class SearchService:
             )
 
         query_embedding = self.embeddings_client.embed_query(query)
-        return self.vector_store.query_within_paper(
-            owner_id=owner_id, paper_id=paper.id, query_embedding=query_embedding, top_k=top_k
+        return self.chunk_repository.find_similar_within_paper(
+            paper.id, owner_id=owner_id, query_embedding=query_embedding, top_k=top_k
         )
 
     def search_library(self, *, owner_id: str, query: str, limit: int = 10) -> list[dict]:
@@ -101,7 +101,7 @@ class SearchService:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Query cannot be empty")
 
         query_embedding = self.embeddings_client.embed_query(query)
-        matches = self.vector_store.query_for_owner(
+        matches = self.chunk_repository.find_similar_for_owner(
             owner_id=owner_id, query_embedding=query_embedding, top_k=limit * CHUNKS_PER_PAPER
         )
         if not matches:

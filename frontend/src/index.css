@@ -137,3 +137,24 @@ h1, h2, h3, .font-content-heading {
 .pt-border-blue   { border-color: #9bbee1; }
 .pt-border-pink   { border-color: #e8a8b4; }
 .pt-border-purple { border-color: #c4acdc; }
+
+/* Full-page variant of .prose-answer: same rules, sized for an article column
+ * rather than the 380px assistant sidebar. */
+.prose-review h1,
+.prose-review h2 {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  margin: 1.4em 0 0.4em;
+}
+.prose-review h3 {
+  font-size: 1.05rem;
+  margin: 1.2em 0 0.3em;
+}
+.prose-review p,
+.prose-review li {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.prose-review p {
+  margin-bottom: 1em;
+}

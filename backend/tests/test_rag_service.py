@@ -1,4 +1,3 @@
-import chromadb
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -12,9 +11,8 @@ from app.models.paper import Paper
 from app.repositories.paper_repository import PaperRepository
 from app.services.rag_service import RagService
 from app.services.search_service import SearchService
-from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
-from tests.fakes import FakeEmbeddingsClient, FakeLLMClient
+from tests.fakes import FakeChunkSearch, FakeEmbeddingsClient, FakeLLMClient
 
 
 def _make_db_session():
@@ -42,17 +40,15 @@ def _make_embedded_paper(*, owner_id: str, chunk_texts: list[str]):
     db.commit()
 
     embeddings_client = FakeEmbeddingsClient()
-    vector_store = VectorStore(chromadb.EphemeralClient())
     run_embedding_job(
         paper.id,
         owner_id=owner_id,
         db=db,
         embeddings_client=embeddings_client,
-        vector_store=vector_store,
     )
     db.refresh(paper)
 
-    return paper, SearchService(PaperRepository(db), embeddings_client, vector_store)
+    return paper, SearchService(PaperRepository(db), embeddings_client, FakeChunkSearch(db))
 
 
 def test_answer_question_returns_answer_and_citations():
@@ -106,7 +102,7 @@ def test_answer_question_requires_embedded_paper():
     db.refresh(paper)
 
     search_service = SearchService(
-        PaperRepository(db), FakeEmbeddingsClient(), VectorStore(chromadb.EphemeralClient())
+        PaperRepository(db), FakeEmbeddingsClient(), FakeChunkSearch(db)
     )
     service = RagService(search_service, FakeLLMClient())
 

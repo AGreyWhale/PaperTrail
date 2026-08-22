@@ -10,7 +10,7 @@ VENV     := $(BACKEND)/.venv/bin
 # accidentally pick up a system-wide alembic/uvicorn instead.
 
 .DEFAULT_GOAL := dev
-.PHONY: dev api web worker ports up down migrate test build install clean
+.PHONY: dev api web worker ports up down migrate test test-pg build install clean
 
 ## dev: containers + migrations, then API and web together (Ctrl-C stops both)
 dev: ports migrate
@@ -48,11 +48,12 @@ api: migrate
 web:
 	cd $(FRONTEND) && pnpm dev
 
-## worker: celery worker for embedding jobs (own terminal, alongside `make dev`)
+## worker: celery worker for embedding jobs. Only needed when
+## EMBEDDING_BACKEND=celery; the background_tasks backend needs no worker
 worker: up
 	cd $(BACKEND) && $(VENV)/celery -A app.workers.celery_app.celery_app worker --loglevel=info
 
-## up: start postgres, redis and chroma, and wait until they accept connections
+## up: start postgres and redis, and wait until they accept connections
 up:
 	docker compose -f $(ROOT)/docker-compose.yml up -d --wait
 
@@ -67,6 +68,11 @@ migrate: up
 ## test: backend test suite
 test:
 	cd $(BACKEND) && $(VENV)/python -m pytest tests/ -q
+
+## test-pg: the pgvector tests, which need a real Postgres (skipped by `make test`)
+test-pg: up
+	cd $(BACKEND) && TEST_DATABASE_URL=postgresql+psycopg2://papertrail:papertrail@localhost:5432/papertrail_test \
+	  $(VENV)/python -m pytest tests/test_pgvector.py -q -m pg
 
 ## build: typecheck + production build of the frontend
 build:

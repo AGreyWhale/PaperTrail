@@ -3,8 +3,17 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-import chromadb
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -39,7 +48,6 @@ from app.services.rag_service import RagService
 from app.services.search_service import SearchService
 from app.storage.base import FileStorage
 from app.storage.local import LocalFileStorage
-from app.vectorstore.client import VectorStore
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 
@@ -71,15 +79,31 @@ def get_doi_lookup_service() -> DoiLookupService:
     settings = get_settings()
     return DoiLookupService(CrossRefClient(contact_email=settings.crossref_contact_email))
 
-def get_embedding_enqueue_fn() -> Callable[[str, str], None]:
-    # Its own dependency so tests can override just the enqueue step and
-    # never need a reachable Redis broker.
-    def _enqueue(paper_id: str, owner_id: str) -> None:
-        from app.workers.tasks import embed_paper_task
+def get_embedding_enqueue_fn(
+    background_tasks: BackgroundTasks,
+) -> Callable[[str, str], None]:
+    # Its own dependency so tests can override just the enqueue step and never
+    # need a reachable Redis broker. BackgroundTasks is injectable into a
+    # dependency the same way it is into an endpoint, so the fallback path gets
+    # it here rather than through a global.
+    settings = get_settings()
 
-        embed_paper_task.delay(paper_id, owner_id)
+    if settings.embedding_backend == "celery":
+        def _enqueue(paper_id: str, owner_id: str) -> None:
+            from app.workers.tasks import embed_paper_task
 
-    return _enqueue
+            embed_paper_task.delay(paper_id, owner_id)
+
+        return _enqueue
+
+    def _enqueue_in_process(paper_id: str, owner_id: str) -> None:
+        from app.workers.tasks import embed_paper_now
+
+        # Runs after the response is sent, so the endpoint still returns
+        # "queued" immediately and the client polls exactly as before.
+        background_tasks.add_task(embed_paper_now, paper_id, owner_id)
+
+    return _enqueue_in_process
 
 def get_embedding_service(
     db: Session = Depends(get_db),
@@ -87,28 +111,21 @@ def get_embedding_service(
 ) -> EmbeddingService:
     return EmbeddingService(PaperRepository(db), ChunkRepository(db), enqueue_fn)
 
+def get_chunk_repository(db: Session = Depends(get_db)) -> ChunkRepository:
+    #Its own factory so tests can substitute the similarity queries, which are
+    #pgvector SQL and don't run on the suite's SQLite database
+    return ChunkRepository(db)
+
 def get_embeddings_client() -> EmbeddingsClient:
     settings = get_settings()
     return EmbeddingsClient(model_name=settings.embedding_model)
 
-def get_vector_store() -> VectorStore:
-    settings = get_settings()
-    return VectorStore(chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port))
-
-def get_optional_vector_store() -> VectorStore | None:
-    #Deleting a paper shouldn't fail just because Chroma is unreachable — the
-    #row still goes, and search already skips vectors with no matching paper
-    try:
-        return get_vector_store()
-    except Exception:
-        return None
-
 def get_search_service(
     db: Session = Depends(get_db),
     embeddings_client: EmbeddingsClient = Depends(get_embeddings_client),
-    vector_store: VectorStore = Depends(get_vector_store),
+    chunk_repository: ChunkRepository = Depends(get_chunk_repository),
 ) -> SearchService:
-    return SearchService(PaperRepository(db), embeddings_client, vector_store)
+    return SearchService(PaperRepository(db), embeddings_client, chunk_repository)
 
 def get_llm_client() -> LLMClient:
     settings = get_settings()
@@ -204,9 +221,10 @@ def delete_paper(
     paper_id: uuid.UUID,
     user_id: str = Depends(get_current_user_id),
     service: PaperService = Depends(get_paper_service),
-    vector_store: VectorStore | None = Depends(get_optional_vector_store),
 ) -> None:
-    service.delete_paper(paper_id, owner_id=user_id, vector_store=vector_store)
+    # Embeddings live on the chunk rows, which cascade with the paper — there
+    # is no separate vector store left to clean up.
+    service.delete_paper(paper_id, owner_id=user_id)
 
 @router.patch("/{paper_id}/favorite", response_model=PaperOut)
 def toggle_favorite(
@@ -326,7 +344,7 @@ def list_chunks(
 # user_id comes before service on these three: FastAPI resolves
 # dependencies in signature order, so putting auth first means an
 # unauthenticated request 401s without first loading the embeddings
-# model or opening a Chroma/LLM connection.
+# model or opening a database/LLM connection.
 
 @router.post("/{paper_id}/embed", response_model=PaperOut)
 def embed_paper(

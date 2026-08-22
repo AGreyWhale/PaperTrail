@@ -1,16 +1,15 @@
 import io
 import uuid
 
-import chromadb
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
-from app.api.papers import get_embedding_enqueue_fn, get_embeddings_client, get_vector_store
+from app.api.papers import get_embedding_enqueue_fn, get_chunk_repository, get_embeddings_client
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.main import app
-from app.vectorstore.client import VectorStore
 from app.workers.embedding_job import run_embedding_job
-from tests.fakes import FakeEmbeddingsClient
+from tests.fakes import FakeChunkSearch, FakeEmbeddingsClient
 from tests.pdf_helpers import make_test_pdf
 
 
@@ -18,9 +17,9 @@ def _setup_embedded_paper(client) -> str:
     #Creates, uploads, processes and embeds a paper with fakes throughout,
     #running the job inline instead of through Celery
     fake_embeddings_client = FakeEmbeddingsClient()
-    fake_vector_store = VectorStore(chromadb.EphemeralClient())
     app.dependency_overrides[get_embeddings_client] = lambda: fake_embeddings_client
-    app.dependency_overrides[get_vector_store] = lambda: fake_vector_store
+    # Resolved with the request's own session, so the fake reads the same DB.
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
 
     def _run_synchronously(paper_id: str, owner_id: str) -> None:
         # Goes through the app's own get_db override, so the job runs
@@ -33,7 +32,6 @@ def _setup_embedded_paper(client) -> str:
                 owner_id=owner_id,
                 db=db,
                 embeddings_client=fake_embeddings_client,
-                vector_store=fake_vector_store,
             )
         finally:
             db_generator.close()
@@ -72,11 +70,10 @@ def test_similar_returns_matching_chunk(client):
 
 
 def test_similar_requires_embedded_paper(client):
-    # Faked even though this 422s before reaching the vector store:
-    # FastAPI builds every dependency up front, and get_vector_store
-    # would otherwise open a real Chroma connection.
+    # Faked even though this 422s before reaching the similarity query:
+    # FastAPI builds every dependency up front.
     app.dependency_overrides[get_embeddings_client] = lambda: FakeEmbeddingsClient()
-    app.dependency_overrides[get_vector_store] = lambda: VectorStore(chromadb.EphemeralClient())
+    app.dependency_overrides[get_chunk_repository] = lambda db=Depends(get_db): FakeChunkSearch(db)
 
     create_response = client.post(
         "/api/papers", json={"title": "Not Embedded Paper", "authors": ["Someone"]}

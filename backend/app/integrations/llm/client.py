@@ -17,7 +17,10 @@ class LLMClient:
         self._model = model
         self._client = client or OpenAI(api_key=api_key, base_url=base_url)
 
-    def complete(self, *, system: str, user: str) -> str:
+    def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
+        #json_mode asks the provider to guarantee syntactically valid JSON.
+        #It guarantees shape, not correctness, so callers still validate
+        extra = {"response_format": {"type": "json_object"}} if json_mode else {}
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -27,6 +30,7 @@ class LLMClient:
                 ],
                 # Grounded Q&A over retrieved text wants low creativity.
                 temperature=0.2,
+                **extra,
             )
         except openai.APIError as exc:
             raise LLMUnavailableError(_provider_message(exc)) from exc
