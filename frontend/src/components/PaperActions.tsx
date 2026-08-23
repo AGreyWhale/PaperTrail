@@ -8,11 +8,12 @@ import type { Paper } from "../lib/types";
 //Destructive and re-run actions for one paper, kept together behind a menu so
 //the reading header stays calm
 export function PaperActions({ paper }: { paper: Paper }) {
-  const { request } = useApiClient();
+  const { request, requestText } = useApiClient();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
@@ -39,6 +40,28 @@ export function PaperActions({ paper }: { paper: Paper }) {
       refresh();
     },
   });
+
+  async function fetchBibtex(): Promise<string> {
+    return requestText(`/api/papers/${paper.id}/bibtex`);
+  }
+
+  async function copyBibtex() {
+    await navigator.clipboard.writeText(await fetchBibtex());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function downloadBibtex() {
+    const url = URL.createObjectURL(
+      new Blob([await fetchBibtex()], { type: "application/x-bibtex" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${paper.title.slice(0, 60).replace(/[^\w-]+/g, "-")}.bib`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setOpen(false);
+  }
 
   const remove = useMutation({
     mutationFn: () => request(`/api/papers/${paper.id}`, { method: "DELETE" }),
@@ -84,6 +107,11 @@ export function PaperActions({ paper }: { paper: Paper }) {
           >
             {reprocess.isPending ? "Reprocessing…" : "Reprocess text"}
           </MenuItem>
+
+          <div className="h-px bg-border my-1" />
+
+          <MenuItem onClick={copyBibtex}>{copied ? "Copied" : "Copy BibTeX"}</MenuItem>
+          <MenuItem onClick={downloadBibtex}>Download .bib</MenuItem>
 
           <div className="h-px bg-border my-1" />
 

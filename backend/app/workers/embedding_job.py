@@ -30,8 +30,9 @@ def run_embedding_job(
         chunks = chunk_repository.list_for_paper(paper.id)
         embeddings = embeddings_client.embed_documents([c.text for c in chunks])
         chunk_repository.store_embeddings(list(zip([c.id for c in chunks], embeddings)))
-    except Exception:
-        paper_repository.set_embedding_status(paper, "failed")
+    except Exception as exc:
+        #Record why, not just that it failed
+        paper_repository.set_embedding_status(paper, "failed", error=f"{type(exc).__name__}: {exc}")
         raise
 
     paper_repository.set_embedding_status(paper, "embedded")

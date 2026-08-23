@@ -219,6 +219,22 @@ export function ReadingPage() {
             {pipelineBusy ? "Starting…" : "Prepare for Q&A"}
           </Button>
         )}
+        {paper.embedding_status === "failed" && (
+          <div className="flex items-center gap-2 min-w-0">
+            {paper.embedding_error && (
+              <span
+                title={paper.embedding_error}
+                className="text-xs text-accent-ai bg-accent-ai-soft rounded-control px-2 py-1 truncate max-w-xs"
+              >
+                {paper.embedding_error}
+              </span>
+            )}
+            {/* Same endpoint as the first attempt — it clears the error and re-queues. */}
+            <Button variant="ai" size="sm" onClick={handleEmbed} disabled={pipelineBusy}>
+              {pipelineBusy ? "Retrying…" : "Retry"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {showTags && (

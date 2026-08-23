@@ -39,6 +39,8 @@ class EmbeddingService:
                 status.HTTP_422_UNPROCESSABLE_CONTENT, "This paper has no chunks to embed"
             )
 
+        #Clears any previous error, so the retry path and the first attempt
+        #are the same code — nothing separate to keep in sync
         paper = self.paper_repository.set_embedding_status(paper, "queued")
         self._enqueue_fn(str(paper.id), owner_id)
         return PaperOut.from_model(paper)

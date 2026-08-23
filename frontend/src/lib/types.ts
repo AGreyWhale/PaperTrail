@@ -15,6 +15,7 @@ export interface Paper {
   file_size_bytes: number | null;
   processing_status: "unprocessed" | "processing" | "processed" | "failed";
   embedding_status: "not_embedded" | "queued" | "embedding" | "embedded" | "failed";
+  embedding_error: string | null;
   last_opened_at: string | null;
   last_page: number | null;
   is_favorite: boolean;
@@ -116,4 +117,9 @@ export interface LiteratureReview {
   themes: Theme[];
   markdown: string;
   sources: ReviewSource[];
+}
+
+//A note plus the paper it belongs to, for the home page's panel
+export interface RecentNote extends Note {
+  paper_title: string;
 }

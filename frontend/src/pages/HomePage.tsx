@@ -4,6 +4,7 @@ import { Show } from "@clerk/react";
 import { Card } from "../components/ui/Card";
 import { LibraryStats } from "../components/library/LibraryStats";
 import { RecentlyAdded } from "../components/library/RecentlyAdded";
+import { RecentNotes } from "../components/library/RecentNotes";
 import { GettingStarted } from "../components/library/GettingStarted";
 import { useApiClient } from "../lib/api";
 import type { Collection, Paper } from "../lib/types";
@@ -164,6 +165,7 @@ export function HomePage() {
             {papers && <LibraryStats papers={papers} />}
             {papers && <GettingStarted paperCount={papers.length} />}
             {papers && <RecentlyAdded papers={papers} />}
+            <RecentNotes />
           </aside>
         </div>
       </Show>

@@ -47,6 +47,17 @@ class NoteRepository:
             )
         )
 
+    def list_recent_for_owner(self, owner_id: str, *, limit: int = 5) -> list[Note]:
+        #Across every paper, for the home page — not scoped to one paper
+        return list(
+            self.db.scalars(
+                select(Note)
+                .where(Note.owner_id == owner_id)
+                .order_by(Note.created_at.desc())
+                .limit(limit)
+            )
+        )
+
     def update(self, note: Note, *, content: str) -> Note:
         note.content = content
         self.db.commit()

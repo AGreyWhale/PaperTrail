@@ -60,6 +60,22 @@ export function useApiClient() {
     [authHeaders],
   );
 
+  // For endpoints that return text rather than JSON (BibTeX). request()
+  // always parses as JSON, which throws on a .bib body.
+  const requestText = useCallback(
+    async (path: string, options: RequestInit = {}): Promise<string> => {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(await authHeaders()), ...options.headers },
+      });
+      if (!response.ok) {
+        throw new Error(`API error ${response.status}: ${await response.text()}`);
+      }
+      return response.text();
+    },
+    [authHeaders],
+  );
+
   // Reads an NDJSON stream, one JSON object per line, invoking onEvent as
   // each arrives. Uses fetch rather than EventSource because EventSource
   // can't attach the Clerk auth header.
@@ -102,5 +118,5 @@ export function useApiClient() {
     [authHeaders],
   );
 
-  return { request, requestBlobUrl, requestStream };
+  return { request, requestText, requestBlobUrl, requestStream };
 }

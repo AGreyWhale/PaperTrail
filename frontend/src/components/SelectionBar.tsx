@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/Button";
+import { useApiClient } from "../lib/api";
 
 interface SelectionBarProps {
   selected: string[];
@@ -10,6 +11,22 @@ interface SelectionBarProps {
 //"pick 2+ papers" gesture, so they share one bar rather than two
 export function SelectionBar({ selected, onClear }: SelectionBarProps) {
   const navigate = useNavigate();
+  const { requestText } = useApiClient();
+
+  //Reuses this same selection rather than a second picker
+  async function downloadBibtex() {
+    const bib = await requestText("/api/papers/bibtex-export", {
+      method: "POST",
+      body: JSON.stringify({ paper_ids: selected }),
+    });
+    const url = URL.createObjectURL(new Blob([bib], { type: "application/x-bibtex" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "papertrail.bib";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const ready = selected.length >= 2;
   const query = `?papers=${selected.join(",")}`;
 
@@ -17,7 +34,7 @@ export function SelectionBar({ selected, onClear }: SelectionBarProps) {
     <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-accent-primary-soft border-y border-accent-primary/20 flex flex-wrap items-center gap-3">
       <span className="text-sm text-accent-primary">
         {selected.length} selected
-        {!ready && " — pick at least 2"}
+        {!ready && " — pick at least 2 to compare"}
       </span>
 
       <div className="flex items-center gap-2 ml-auto">
@@ -36,6 +53,14 @@ export function SelectionBar({ selected, onClear }: SelectionBarProps) {
           onClick={() => navigate(`/review${query}`)}
         >
           Literature review
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={selected.length === 0}
+          onClick={downloadBibtex}
+        >
+          Export .bib
         </Button>
         <Button size="sm" variant="ghost" onClick={onClear}>
           Cancel

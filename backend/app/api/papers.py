@@ -34,6 +34,7 @@ from app.schemas.paper import (
     NoteCreate,
     NoteOut,
     PaperCreate,
+    MultiPaperRequest,
     PaperOut,
     SimilarChunkOut,
     TagCreate,
@@ -41,6 +42,7 @@ from app.schemas.paper import (
 from app.services.doi_lookup_service import DoiLookupService
 from app.services.embedding_service import EmbeddingService
 from app.services.paper_processing_service import PaperProcessingService
+from app.services.bibtex_service import BibtexService
 from app.services.note_service import NoteService
 from app.services.paper_service import PaperService
 from app.services.tag_service import TagService
@@ -71,6 +73,9 @@ def get_paper_processing_service(
 
 def get_tag_service(db: Session = Depends(get_db)) -> TagService:
     return TagService(TagRepository(db), PaperRepository(db))
+
+def get_bibtex_service(db: Session = Depends(get_db)) -> BibtexService:
+    return BibtexService(PaperRepository(db))
 
 def get_note_service(db: Session = Depends(get_db)) -> NoteService:
     return NoteService(NoteRepository(db), PaperRepository(db))
@@ -181,6 +186,19 @@ async def lookup_by_doi(
 ) -> PaperCreate:
     return await service.lookup(doi)
 
+
+@router.post("/bibtex-export")
+def export_bibtex(
+    data: MultiPaperRequest,
+    user_id: str = Depends(get_current_user_id),
+    service: BibtexService = Depends(get_bibtex_service),
+) -> Response:
+    #Declared above /{paper_id} routes so "bibtex-export" isn't read as a UUID
+    return Response(
+        content=service.for_papers(data.paper_ids, owner_id=user_id),
+        media_type="application/x-bibtex",
+        headers={"Content-Disposition": 'attachment; filename="papertrail.bib"'},
+    )
 
 @router.get("/continue-reading", response_model=list[PaperOut])
 def continue_reading(
@@ -332,6 +350,16 @@ def suggested_questions(
     generate: Callable[[object], list[str]] = Depends(get_question_generator),
 ) -> list[str]:
     return service.suggested_questions(paper_id, owner_id=user_id, generate=generate)
+
+@router.get("/{paper_id}/bibtex")
+def paper_bibtex(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: BibtexService = Depends(get_bibtex_service),
+) -> Response:
+    return Response(
+        content=service.for_paper(paper_id, owner_id=user_id), media_type="application/x-bibtex"
+    )
 
 @router.get("/{paper_id}/chunks", response_model=list[ChunkOut])
 def list_chunks(

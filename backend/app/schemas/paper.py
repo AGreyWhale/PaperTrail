@@ -39,6 +39,7 @@ class PaperOut(BaseModel):
     file_size_bytes: int | None
     processing_status: str
     embedding_status: str
+    embedding_error: str | None
     is_favorite: bool
     tags: list["TagOut"]
     collections: list["CollectionRef"]
@@ -59,6 +60,7 @@ class PaperOut(BaseModel):
             file_size_bytes=paper.file_size_bytes,
             processing_status=paper.processing_status,
             embedding_status=paper.embedding_status,
+            embedding_error=paper.embedding_error,
             is_favorite=paper.is_favorite,
             tags=[TagOut.model_validate(t) for t in paper.tags],
             collections=[CollectionRef.model_validate(c) for c in paper.collections],
@@ -127,6 +129,10 @@ class NoteOut(BaseModel):
     color: str | None
     created_at: datetime
     updated_at: datetime
+
+class RecentNoteOut(NoteOut):
+    #A note plus the paper it belongs to, for the home page's panel
+    paper_title: str
 
 class NoteCreate(BaseModel):
     content: str = ""

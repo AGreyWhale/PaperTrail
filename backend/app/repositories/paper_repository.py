@@ -92,8 +92,10 @@ class PaperRepository:
         self.db.refresh(paper)
         return paper
 
-    def set_embedding_status(self, paper: Paper, status: str) -> Paper:
+    def set_embedding_status(self, paper: Paper, status: str, *, error: str | None = None) -> Paper:
         paper.embedding_status = status
+        #Always overwritten, so a successful retry clears the previous failure
+        paper.embedding_error = error
         self.db.commit()
         self.db.refresh(paper)
         return paper

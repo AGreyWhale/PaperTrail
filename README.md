@@ -22,17 +22,17 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Library-wide semantic search.** `GET /api/search?q=…` embeds the query once and searches every embedded paper you own. Results are grouped **by paper, not by chunk** — three matching passages in one paper is one result showing its strongest excerpt and a match count, not three near-duplicate rows.
 - **A home page separate from the library grid.** Library summary, Continue reading (real positions, persisted as you scroll), and LLM-generated starter questions cached per paper.
 - **Compare mode and literature reviews.** Pick 2+ embedded papers and either get a structured side-by-side table (datasets, architecture, metrics, strengths, weaknesses, future work) or a synthesised markdown review that compares across sources and cites by paper — "(Gao et al., p. 5)" — with a Markdown export. Both share one retrieval helper that validates ownership and caps context per paper.
+- **BibTeX export.** `GET /papers/{id}/bibtex` for one paper, `POST /papers/bibtex-export` for a selection or a whole collection. Entry type is inferred from the venue (`@inproceedings` / `@article` / `@misc` for preprints), citation keys are `surname+year+keyword`, and CrossRef's HTML-laden titles are stripped before LaTeX escaping.
+- **Recoverable embedding failures.** A failed job records the actual exception in `embedding_error`, surfaced on `PaperOut` and shown in the reading header with a Retry button. Retry re-uses the same embed endpoint end to end, clearing the error as it re-queues.
 - **Favorites, tags, collections, and notes.** Tags and collections are proper relational models (per-owner unique tag names, many-to-many joins), so they stay filterable. Notes can stand alone or carry the passage they came from — **Save quote** in the PDF highlight toolbar opens a composer pre-filled with the selection, and notes live in their own tab beside Ask rather than crowding it.
 - **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
-- **152 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
+- **192 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
 
 ## What's in progress
 
 | Area | State |
 | --- | --- |
-| Retry / observability | A failed embedding job sets `embedding_status="failed"`, but there's no retry policy or job-status endpoint yet |
 | `torch` install size | `sentence-transformers` pulls in torch, so a full `make install` is a large download. The test suite fakes it out and never needs it |
-| Home page sections | Notes and collections now exist, but the home page doesn't surface Recent Notes / Collections yet |
 | Library-wide Q&A | Search spans the library, but `/ask` is still one paper at a time |
 
 ---
@@ -189,6 +189,9 @@ All `/api` routes require a Clerk bearer token.
 | `POST` / `GET` | `/api/papers/{id}/notes` | Create / list notes on a paper |
 | `PATCH` / `DELETE` | `/api/notes/{id}` | Edit / delete a note |
 | `GET` | `/api/papers/{id}/suggested-questions` | Starter questions, generated once then cached |
+| `GET` | `/api/papers/{id}/bibtex` | BibTeX entry for one paper |
+| `POST` | `/api/papers/bibtex-export` | One combined `.bib` for a set of papers |
+| `GET` | `/api/notes/recent?limit=…` | Most recent notes across the library |
 | `POST` | `/api/papers/{id}/ask` | Ask a question, answered from the paper with citations |
 | `POST` | `/api/papers/{id}/ask/stream` | Same, streamed as NDJSON (`citations` → `token`… → `done`) |
 

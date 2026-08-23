@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -24,6 +24,8 @@ class Note(Base):
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Pastel swatch name for the PDF highlight; null for a plain typed note.
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    paper = relationship("Paper")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

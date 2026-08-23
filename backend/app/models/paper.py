@@ -44,6 +44,10 @@ class Paper(Base):
         Boolean, nullable=False, default=False, server_default=false()
     )
 
+    # Why the last embedding attempt failed. Nullable and cleared on a
+    # successful run, so a failure is debuggable instead of a dead end.
+    embedding_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Reading progress, for the home page's Continue Reading section.
     # Both null until the paper is opened for the first time.
     last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 
 from app.repositories.note_repository import NoteRepository
 from app.repositories.paper_repository import PaperRepository
-from app.schemas.paper import NoteOut
+from app.schemas.paper import NoteOut, RecentNoteOut
 
 class NoteService:
     #Note rules live here, routers just call in
@@ -46,6 +46,17 @@ class NoteService:
         return [
             NoteOut.model_validate(n)
             for n in self.note_repository.list_for_paper(paper_id, owner_id=owner_id)
+        ]
+
+    def list_recent(self, *, owner_id: str, limit: int = 5) -> list[RecentNoteOut]:
+        #Carries the paper title so the home page can link back without an
+        #extra request per note
+        return [
+            RecentNoteOut(
+                **NoteOut.model_validate(note).model_dump(),
+                paper_title=note.paper.title,
+            )
+            for note in self.note_repository.list_recent_for_owner(owner_id, limit=limit)
         ]
 
     def update(self, note_id: uuid.UUID, *, owner_id: str, content: str) -> NoteOut:

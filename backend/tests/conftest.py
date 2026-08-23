@@ -59,3 +59,32 @@ def client(tmp_path):
     app.dependency_overrides[get_embedding_enqueue_fn] = lambda: (lambda paper_id, owner_id: None)
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def db_session_factory():
+    """A bare session plus one processed paper with chunks, for tests that
+    exercise the job function directly rather than through the API."""
+    from app.models.chunk import Chunk
+    from app.models.paper import Paper
+
+    def _make():
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        db = sessionmaker(bind=engine)()
+        paper = Paper(
+            owner_id="user_1", title="A Paper", authors="A. Author",
+            processing_status="processed",
+        )
+        db.add(paper)
+        db.commit()
+        db.refresh(paper)
+        db.add(Chunk(paper_id=paper.id, chunk_index=0, page_number=1, text="Content.", token_count=10))
+        db.commit()
+        return db, paper
+
+    return _make
