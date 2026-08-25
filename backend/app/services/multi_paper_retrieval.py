@@ -49,11 +49,15 @@ def gather_context(
     owner_id: str,
     paper_repository: PaperRepository,
     search_service: SearchService,
+    probes: tuple[str, ...] = _PROBES,
 ) -> list[PaperContext]:
     """
     Validates a client-supplied list of paper ids and gathers a bounded set of
-    excerpts from each. Shared by compare and literature review so the
-    ownership and readiness rules can't drift apart between them.
+    excerpts from each. Shared by compare, literature review and multi-paper ask
+    so the ownership and readiness rules can't drift apart between them.
+
+    `probes` are the queries used to pull excerpts: the default set covers a
+    paper broadly, while ask passes the user's actual question instead.
     """
     unique = list(dict.fromkeys(paper_ids))
     if len(unique) < MIN_PAPERS:
@@ -82,21 +86,26 @@ def gather_context(
         )
 
     return [
-        PaperContext(owned[pid], _excerpts_for(owned[pid], owner_id, search_service))
+        PaperContext(owned[pid], _excerpts_for(owned[pid], owner_id, search_service, probes))
         for pid in unique
     ]
 
 
-def _excerpts_for(paper: Paper, owner_id: str, search_service: SearchService) -> list[dict]:
+def _excerpts_for(
+    paper: Paper, owner_id: str, search_service: SearchService, probes: tuple[str, ...]
+) -> list[dict]:
     #A few targeted probes rather than the whole paper. Multiplying a full
     #paper by six selections is what blows past Groq's per-minute token limit
     seen: set[uuid.UUID] = set()
     excerpts: list[dict] = []
     budget = _MAX_CHARS_PER_PAPER
 
-    for probe in _PROBES:
+    #Fewer probes means each one can afford more chunks
+    per_probe = max(_CHUNKS_PER_PROBE, 8 // max(len(probes), 1))
+
+    for probe in probes:
         for hit in search_service.search_within_paper(
-            paper.id, owner_id=owner_id, query=probe, top_k=_CHUNKS_PER_PROBE
+            paper.id, owner_id=owner_id, query=probe, top_k=per_probe
         ):
             if hit["chunk_id"] in seen:
                 continue

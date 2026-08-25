@@ -72,10 +72,14 @@ class FakeChunkSearch:
     def find_similar_within_paper(self, paper_id, *, owner_id, query_embedding, top_k=5):
         return self._rank(query_embedding, top_k, owner_id=owner_id, paper_id=paper_id)
 
-    def find_similar_for_owner(self, *, owner_id, query_embedding, top_k=20):
-        return self._rank(query_embedding, top_k, owner_id=owner_id, with_paper_id=True)
+    def find_similar_for_owner(self, *, owner_id, query_embedding, top_k=20, paper_ids=None):
+        return self._rank(
+            query_embedding, top_k, owner_id=owner_id, with_paper_id=True, scope=paper_ids
+        )
 
-    def _rank(self, query_embedding, top_k, *, owner_id, paper_id=None, with_paper_id=False):
+    def _rank(
+        self, query_embedding, top_k, *, owner_id, paper_id=None, with_paper_id=False, scope=None
+    ):
         from app.models.chunk import Chunk
         from app.models.paper import Paper
 
@@ -91,6 +95,9 @@ class FakeChunkSearch:
             if chunk.embedding is None:
                 continue
             if paper_id is not None and chunk.paper_id != paper_id:
+                continue
+            # Mirrors the real query's paper_ids restriction.
+            if scope is not None and chunk.paper_id not in scope:
                 continue
             match = {
                 "chunk_id": chunk.id,

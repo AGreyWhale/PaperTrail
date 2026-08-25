@@ -38,6 +38,23 @@ export function SelectionBar({ selected, onClear }: SelectionBarProps) {
       </span>
 
       <div className="flex items-center gap-2 ml-auto">
+        {/* Search works on a single paper too, so it isn't gated on 2+ */}
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={selected.length === 0}
+          onClick={() => navigate(`/selection-search${query}`)}
+        >
+          Search
+        </Button>
+        <Button
+          size="sm"
+          variant="ai"
+          disabled={!ready}
+          onClick={() => navigate(`/selection-ask${query}`)}
+        >
+          Ask
+        </Button>
         <Button
           size="sm"
           variant="secondary"

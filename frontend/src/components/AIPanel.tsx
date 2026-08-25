@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
+//GFM, or markdown tables arrive as literal pipe characters
+import remarkGfm from "remark-gfm";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { useApiClient } from "../lib/api";
@@ -31,7 +34,7 @@ export function AIPanel({
   pendingQuestion,
   pendingQuote,
 }: AIPanelProps) {
-  const { requestStream } = useApiClient();
+  const { request, requestStream } = useApiClient();
   const [question, setQuestion] = useState("");
   const [entries, setEntries] = useState<AnswerEntry[]>([]);
   const [textSize, setTextSize] = useState(() => Number(localStorage.getItem(TEXT_KEY)) || 15);
@@ -42,6 +45,13 @@ export function AIPanel({
   const abortRef = useRef<AbortController | null>(null);
 
   const ready = embeddingStatus === "embedded";
+
+  // Same cached endpoint the home page uses — one model call per paper, ever.
+  const { data: suggestions } = useQuery({
+    queryKey: ["suggested-questions", paperId],
+    queryFn: () => request<string[]>(`/api/papers/${paperId}/suggested-questions`),
+    enabled: ready,
+  });
   const busy = entries.some((e) => e.streaming);
 
   function cycleTextSize() {
@@ -185,10 +195,29 @@ export function AIPanel({
         )}
 
         {ready && entries.length === 0 && (
-          <p className="text-sm text-text-muted">
-            Ask a question below, or highlight a passage in the PDF and choose Ask, Explain, or
-            Summarize.
-          </p>
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">
+              Ask a question below, or highlight a passage in the PDF and choose Ask, Explain, or
+              Summarize.
+            </p>
+
+            {suggestions && suggestions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-text-muted uppercase tracking-wide">
+                  Questions to start with
+                </p>
+                {suggestions.map((question) => (
+                  <button
+                    key={question}
+                    onClick={() => askWithText(question)}
+                    className="text-sm text-left px-3 py-2 rounded-control border border-border bg-surface hover:border-accent-ai/50 hover:bg-surface-hover text-text-primary transition-colors"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {entries.map((entry) => (
@@ -277,7 +306,7 @@ function AnswerBlock({
       ) : (
         <>
           <div style={{ fontSize: textSize, lineHeight: 1.65 }} className="prose-answer text-text-primary">
-            <ReactMarkdown>{entry.answer}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.answer}</ReactMarkdown>
             {entry.streaming && <span className="inline-block w-1.5 h-4 bg-accent-ai/60 align-text-bottom animate-pulse" />}
           </div>
 

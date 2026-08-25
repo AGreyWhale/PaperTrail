@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import bindparam, delete, select, update
+from sqlalchemy import bindparam, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.chunking.chunker import ChunkResult
@@ -48,6 +48,14 @@ class ChunkRepository:
             )
         self.db.commit()
 
+    def count_embedded_for_paper(self, paper_id: uuid.UUID) -> int:
+        #Used to verify a job really wrote vectors before it claims success
+        return self.db.scalar(
+            select(func.count(Chunk.id)).where(
+                Chunk.paper_id == paper_id, Chunk.embedding.is_not(None)
+            )
+        ) or 0
+
     def find_similar_within_paper(
         self, paper_id: uuid.UUID, *, owner_id: str, query_embedding: list[float], top_k: int = 5
     ) -> list[dict]:
@@ -61,13 +69,20 @@ class ChunkRepository:
         return [_as_match(row) for row in rows]
 
     def find_similar_for_owner(
-        self, *, owner_id: str, query_embedding: list[float], top_k: int = 20
+        self,
+        *,
+        owner_id: str,
+        query_embedding: list[float],
+        top_k: int = 20,
+        paper_ids: list[uuid.UUID] | None = None,
     ) -> list[dict]:
-        #Library-wide: every embedded chunk this owner has. Carries paper_id so
-        #the caller can group hits by paper
-        rows = self.db.execute(
-            self._similarity_query(query_embedding, top_k), {"owner_id": owner_id}
-        ).all()
+        #Every embedded chunk this owner has, or just the given papers when the
+        #caller is scoping to a selection. Carries paper_id for grouping
+        query = self._similarity_query(query_embedding, top_k)
+        if paper_ids is not None:
+            query = query.where(Chunk.paper_id.in_(paper_ids))
+
+        rows = self.db.execute(query, {"owner_id": owner_id}).all()
         return [_as_match(row, with_paper_id=True) for row in rows]
 
     @staticmethod

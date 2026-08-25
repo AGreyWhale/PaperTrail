@@ -105,3 +105,40 @@ def test_retry_refuses_another_users_paper(client):
 
     app.dependency_overrides[get_current_user_id] = lambda: "user_bob"
     assert client.post(f"/api/papers/{paper_id}/embed").status_code == 404
+
+
+def test_a_job_that_writes_no_vectors_is_a_failure_not_a_success(db_session_factory):
+    #The silent-failure mode: a paper marked "embedded" with nothing stored
+    #looks ready but returns nothing from every query
+    db, paper = db_session_factory()
+
+    class SilentlyEmptyClient:
+        def embed_documents(self, texts):
+            return []
+
+    try:
+        run_embedding_job(
+            paper.id, owner_id="user_1", db=db, embeddings_client=SilentlyEmptyClient()
+        )
+    except RuntimeError:
+        pass
+
+    db.refresh(paper)
+    assert paper.embedding_status == "failed"
+    assert "0 vectors for 1 chunks" in paper.embedding_error
+
+
+def test_a_partial_embedding_is_also_a_failure(db_session_factory):
+    db, paper = db_session_factory()
+
+    class ShortClient:
+        def embed_documents(self, texts):
+            return []  # fewer vectors than chunks
+
+    try:
+        run_embedding_job(paper.id, owner_id="user_1", db=db, embeddings_client=ShortClient())
+    except RuntimeError:
+        pass
+
+    db.refresh(paper)
+    assert paper.embedding_status == "failed"

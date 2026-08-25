@@ -147,6 +147,28 @@ class MultiPaperRequest(BaseModel):
     #Shared by compare and literature review — both start from "pick 2+ papers"
     paper_ids: list[uuid.UUID]
 
+class ScopedSearchRequest(BaseModel):
+    #Search restricted to a chosen set of papers, not the whole library
+    paper_ids: list[uuid.UUID]
+    q: str
+    limit: int = 10
+
+class MultiAskRequest(BaseModel):
+    paper_ids: list[uuid.UUID]
+    question: str
+
+class MultiCitationOut(BaseModel):
+    #Carries the paper as well as the page — several sources are in play
+    paper_id: uuid.UUID
+    paper_title: str
+    citation: str
+    page_number: int
+    text: str
+
+class MultiAskAnswerOut(BaseModel):
+    answer: str
+    citations: list[MultiCitationOut]
+
 class ComparisonRowOut(BaseModel):
     #One paper's column in the comparison table
     paper_id: uuid.UUID

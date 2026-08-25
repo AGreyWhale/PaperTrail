@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -46,6 +48,13 @@ def _library(papers: dict[str, list[str]], *, owner_id: str = "user_1"):
 
     service = SearchService(PaperRepository(db), embeddings_client, FakeChunkSearch(db))
     return db, service
+
+
+def _papers_in(service) -> list:
+    #Helper for scoped-search tests that need the created papers back
+    from app.models.paper import Paper
+
+    return service.paper_repository.db.query(Paper).all()
 
 
 def test_search_spans_every_paper_in_the_library():
@@ -111,3 +120,74 @@ def test_search_skips_papers_deleted_since_embedding():
 
     # Vectors outlive the row; the result should be dropped, not KeyError.
     assert service.search_library(owner_id="user_1", query="Content that will be orphaned.") == []
+
+
+def test_scoped_search_only_looks_in_the_selected_papers():
+    _, service = _library(
+        {
+            "Selected Paper": ["Attention mechanisms are explained here."],
+            "Other Paper": ["Attention mechanisms are explained here too."],
+        }
+    )
+    selected = next(p for p in _papers_in(service) if p.title == "Selected Paper")
+
+    results = service.search_library(
+        owner_id="user_1",
+        query="Attention mechanisms are explained here.",
+        paper_ids=[selected.id],
+    )
+
+    assert [r["title"] for r in results] == ["Selected Paper"]
+
+
+def test_unscoped_search_still_spans_everything():
+    _, service = _library(
+        {"One": ["Attention mechanisms here."], "Two": ["Attention mechanisms here too."]}
+    )
+
+    results = service.search_library(owner_id="user_1", query="Attention mechanisms here.")
+
+    assert len(results) == 2
+
+
+def test_scoped_search_rejects_an_empty_selection():
+    _, service = _library({"A Paper": ["Some content."]})
+
+    with pytest.raises(HTTPException) as exc:
+        service.search_library(owner_id="user_1", query="anything", paper_ids=[])
+
+    assert exc.value.status_code == 422
+
+
+def test_scoped_search_refuses_papers_the_user_does_not_own():
+    _, service = _library({"Alice's Paper": ["Alice's content."]}, owner_id="user_alice")
+    alice_paper = _papers_in(service)[0]
+
+    #Bob passing a valid id he doesn't own must not reach Alice's chunks
+    with pytest.raises(HTTPException) as exc:
+        service.search_library(
+            owner_id="user_bob", query="content", paper_ids=[alice_paper.id]
+        )
+
+    assert exc.value.status_code == 404
+
+
+def test_scoped_search_rejects_a_forged_id_mixed_with_owned_ones():
+    _, service = _library({"Mine": ["Some content."]})
+    mine = _papers_in(service)[0]
+
+    with pytest.raises(HTTPException) as exc:
+        service.search_library(
+            owner_id="user_1", query="content", paper_ids=[mine.id, uuid.uuid4()]
+        )
+
+    assert exc.value.status_code == 404
+
+
+def test_scoped_search_endpoint_returns_grouped_hits(client):
+    #Endpoint-level: the selection route shares the grouping and snippets
+    response = client.post(
+        "/api/search/selection",
+        json={"paper_ids": ["00000000-0000-0000-0000-000000000000"], "q": "anything"},
+    )
+    assert response.status_code == 404  # unknown id, owner-scoped

@@ -93,16 +93,44 @@ class SearchService:
             paper.id, owner_id=owner_id, query_embedding=query_embedding, top_k=top_k
         )
 
-    def search_library(self, *, owner_id: str, query: str, limit: int = 10) -> list[dict]:
+    def _validated_scope(
+        self, paper_ids: list[uuid.UUID] | None, *, owner_id: str
+    ) -> list[uuid.UUID] | None:
+        #Never trust ids from the client: anything not owned simply isn't found
+        if paper_ids is None:
+            return None
+        unique = list(dict.fromkeys(paper_ids))
+        if not unique:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "Select at least one paper to search"
+            )
+        owned = self.paper_repository.list_by_ids(unique, owner_id=owner_id)
+        if len(owned) != len(unique):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "One or more papers were not found")
+        return unique
+
+    def search_library(
+        self,
+        *,
+        owner_id: str,
+        query: str,
+        limit: int = 10,
+        paper_ids: list[uuid.UUID] | None = None,
+    ) -> list[dict]:
         #One result per paper, not per chunk. Three matching chunks from the
         #same paper is one hit showing its strongest excerpt, not three rows.
         #Over-fetches chunks because grouping collapses them
         if not query.strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Query cannot be empty")
 
+        scope = self._validated_scope(paper_ids, owner_id=owner_id)
+
         query_embedding = self.embeddings_client.embed_query(query)
         matches = self.chunk_repository.find_similar_for_owner(
-            owner_id=owner_id, query_embedding=query_embedding, top_k=limit * CHUNKS_PER_PAPER
+            owner_id=owner_id,
+            query_embedding=query_embedding,
+            top_k=limit * CHUNKS_PER_PAPER,
+            paper_ids=scope,
         )
         if not matches:
             return []

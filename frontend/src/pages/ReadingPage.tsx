@@ -178,8 +178,10 @@ export function ReadingPage() {
 
   if (!paper) return null;
 
+  // h-full works because <main> now has a definite height (flex-1 of h-screen),
+  // so this fills it exactly and the two panes scroll independently inside.
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-full">
       <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-surface">
         <div className="flex flex-col gap-0.5 min-w-0">
           <Link to="/" className="text-xs text-text-muted hover:text-text-secondary w-fit">

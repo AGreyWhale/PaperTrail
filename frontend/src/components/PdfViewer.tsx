@@ -391,15 +391,21 @@ export function PdfViewer({
       <div
         ref={containerRef}
         onMouseUp={handleMouseUp}
-        className="relative flex-1 overflow-auto flex flex-col items-center py-6"
+        className="relative flex-1 overflow-auto py-6"
       >
         <div
           style={{
-            transform: preview ? `scale(${preview / scale})` : undefined,
+            //Only preview shrinking. Scaling up paints outside the
+            //container's scrollable area, which reads as clipping.
+            transform:
+              preview && preview < scale ? `scale(${preview / scale})` : undefined,
             transformOrigin: "top center",
             transition: "transform 120ms ease-out",
           }}
-          className="flex flex-col items-center"
+          // min-w-full keeps pages centred while they fit; w-fit lets the
+          // wrapper grow past the container when zoomed in, so the overflow is
+          // reachable instead of being clipped by centring.
+          className="w-fit min-w-full mx-auto flex flex-col items-center"
         >
           <Document
             file={fileUrl}

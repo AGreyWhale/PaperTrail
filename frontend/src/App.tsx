@@ -5,6 +5,8 @@ import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ComparePage } from "./pages/ComparePage";
 import { ReviewPage } from "./pages/ReviewPage";
+import { SelectionSearchPage } from "./pages/SelectionSearchPage";
+import { SelectionAskPage } from "./pages/SelectionAskPage";
 
 // Lazy so the Library page doesn't download react-pdf/pdfjs, which is
 // heavy and only the reading view needs it.
@@ -20,6 +22,8 @@ function App() {
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/compare" element={<ComparePage />} />
         <Route path="/review" element={<ReviewPage />} />
+        <Route path="/selection-search" element={<SelectionSearchPage />} />
+        <Route path="/selection-ask" element={<SelectionAskPage />} />
         <Route
           path="/papers/:paperId"
           element={

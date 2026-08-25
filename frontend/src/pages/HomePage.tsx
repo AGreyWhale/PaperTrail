@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Show } from "@clerk/react";
+import { Show, SignInButton } from "@clerk/react";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { LibraryStats } from "../components/library/LibraryStats";
 import { RecentlyAdded } from "../components/library/RecentlyAdded";
@@ -55,11 +56,41 @@ export function HomePage() {
                 : " "}
             </p>
           </Show>
-          <Show when="signed-out">
-            <p className="text-text-secondary text-sm">Sign in to see your library.</p>
-          </Show>
+
         </div>
       </header>
+
+      <Show when="signed-out">
+        <div className="max-w-2xl mx-auto px-6 py-20 w-full flex flex-col items-center text-center gap-6">
+          <BooksIcon />
+
+          <div className="flex flex-col gap-2">
+            <h2 className="font-serif text-2xl text-text-primary">Your research library, in one place</h2>
+            <p className="text-text-secondary leading-relaxed">
+              Add papers by DOI, read them side by side with an assistant that answers from the
+              text itself, and keep your highlights and notes with the passage they came from.
+            </p>
+          </div>
+
+          <SignInButton>
+            <Button variant="primary">Sign in to get started</Button>
+          </SignInButton>
+
+          <ul className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-6 text-left">
+            {[
+              ["Ask, with citations", "Answers cite the page they came from, so you can check them."],
+              ["Search everything", "One query across every paper you've added."],
+              ["Highlight and note", "Colour-code passages and keep your notes beside them."],
+            ].map(([title, body]) => (
+              <li key={title} className="flex flex-col gap-1.5">
+                <div className="h-1 w-8 rounded-full bg-accent-primary/60" />
+                <span className="font-serif text-sm text-text-primary">{title}</span>
+                <span className="text-xs text-text-secondary leading-relaxed">{body}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Show>
 
       <Show when="signed-in">
         <div className="max-w-6xl mx-auto px-6 py-10 w-full flex flex-col lg:flex-row gap-8 items-start">
@@ -197,6 +228,23 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+function BooksIcon() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className="w-14 h-14 text-accent-primary/70"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10 8v32M17 8v32M24 9l9 31" />
+      <path d="M6 40h36" />
+    </svg>
   );
 }
 

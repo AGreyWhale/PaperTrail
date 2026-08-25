@@ -1,6 +1,8 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
+//GFM, or markdown tables arrive as literal pipe characters
+import remarkGfm from "remark-gfm";
 import { Button } from "../components/ui/Button";
 import { PaperMatrix } from "../components/PaperMatrix";
 import { useApiClient } from "../lib/api";
@@ -112,7 +114,7 @@ export function ReviewPage() {
             {/* prose-answer is the AI panel's markdown styling; prose-review
                 widens it for a full-page read rather than a 380px sidebar. */}
             <article className="prose-answer prose-review text-text-primary max-w-3xl">
-              <ReactMarkdown>{data.markdown}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.markdown}</ReactMarkdown>
             </article>
 
             <footer className="border-t border-border pt-4 flex flex-col gap-2">

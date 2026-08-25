@@ -123,3 +123,16 @@ export interface LiteratureReview {
 export interface RecentNote extends Note {
   paper_title: string;
 }
+
+export interface MultiCitation {
+  paper_id: string;
+  paper_title: string;
+  citation: string;
+  page_number: number;
+  text: string;
+}
+
+export interface MultiAskAnswer {
+  answer: string;
+  citations: MultiCitation[];
+}
