@@ -10,7 +10,7 @@ VENV     := $(BACKEND)/.venv/bin
 # accidentally pick up a system-wide alembic/uvicorn instead.
 
 .DEFAULT_GOAL := dev
-.PHONY: dev api web worker ports up down migrate test test-pg build install clean
+.PHONY: dev api web worker ports up down migrate test test-pg test-supabase build install clean
 
 ## dev: containers + migrations, then API and web together (Ctrl-C stops both)
 dev: ports migrate
@@ -73,6 +73,11 @@ test:
 test-pg: up
 	cd $(BACKEND) && TEST_DATABASE_URL=postgresql+psycopg2://papertrail:papertrail@localhost:5432/papertrail_test \
 	  $(VENV)/python -m pytest tests/test_pgvector.py -q -m pg
+
+## test-supabase: the Supabase Storage tests, which need real credentials
+## and a private bucket (skipped by `make test`)
+test-supabase:
+	cd $(BACKEND) && $(VENV)/python -m pytest tests/test_supabase_storage.py -q -m supabase
 
 ## build: typecheck + production build of the frontend
 build:

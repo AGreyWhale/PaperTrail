@@ -9,7 +9,7 @@ services:
     runtime: python
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
     # Free web services sleep when idle, which is why EMBEDDING_BACKEND is set
     # to background_tasks below: there is no always-on worker to hand jobs to.
     startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -20,6 +20,13 @@ services:
 
       # Wired automatically from the database defined below.
       - key: DATABASE_URL
+        sync: false
+
+      # Free-tier disk does not survive a restart or a spin-down, so uploads
+      # go to a private Supabase Storage bucket instead of LOCAL_STORAGE_ROOT.
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
         sync: false
 
       # No Celery worker and no Redis on the free tier.
@@ -47,4 +54,9 @@ services:
       - key: LLM_MODEL
         sync: false
       - key: CROSSREF_CONTACT_EMAIL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      # Service role key — server-side only, never sent to the browser.
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false

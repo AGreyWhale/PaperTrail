@@ -11,7 +11,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 
 - **Clerk authentication** on every route, with papers scoped to their owner — you only ever see your own library.
 - **Add a paper by DOI.** Looks the DOI up against the CrossRef REST API, maps the result into a title/authors/venue/year preview, and saves it on confirmation.
-- **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in local file storage behind a swappable `FileStorage` interface.
+- **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in storage behind a swappable `FileStorage` interface — local disk in development, a private Supabase Storage bucket in deployment, chosen by one env var.
 - **Process a PDF into chunks.** `pdfplumber` extracts per-page text, a sentence-aware chunker packs it into ~500-token chunks with a 2-sentence overlap, and each chunk keeps the page it started on so citations can point back to it later.
 - **Embed a paper's chunks in the background.** `POST /papers/{id}/embed` validates and returns immediately with `embedding_status="queued"`; a background job runs a local `sentence-transformers` BGE model and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
 - **Semantic search inside a paper.** `GET /papers/{id}/similar?query=…` embeds the query and returns the closest chunks with their page numbers and a similarity score.
@@ -26,7 +26,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Recoverable embedding failures.** A failed job records the actual exception in `embedding_error`, surfaced on `PaperOut` and shown in the reading header with a Retry button. Retry re-uses the same embed endpoint end to end, clearing the error as it re-queues.
 - **Favorites, tags, collections, and notes.** Tags and collections are proper relational models (per-owner unique tag names, many-to-many joins), so they stay filterable. Notes can stand alone or carry the passage they came from — **Save quote** in the PDF highlight toolbar opens a composer pre-filled with the selection, and notes live in their own tab beside Ask rather than crowding it.
 - **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
-- **192 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
+- **222 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
 
 ## What's in progress
 
@@ -42,6 +42,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 **Backend** — Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, Postgres 16 + pgvector, pdfplumber, Celery, sentence-transformers, Clerk, pytest
 **Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, react-pdf/pdf.js, Clerk, oxlint, pnpm
 **Infra (dev)** — Docker Compose (Postgres/pgvector + Redis), local disk for file storage
+**Infra (deployed)** — Render (free web service + Postgres), Supabase Storage for PDFs, Vercel for the frontend
 
 Embeddings run locally via `sentence-transformers`, so there's no per-token cost or rate limit on them. Answer generation goes to any OpenAI-compatible endpoint (Groq's free tier by default) — switching providers is three values in `.env`, not a code change.
 
@@ -58,7 +59,7 @@ backend/
     services/         business logic (papers, uploads, processing, DOI lookup, embedding, search, RAG)
     parsing/          PDF text extraction
     chunking/         sentence-aware chunker
-    storage/          FileStorage interface + local-disk implementation
+    storage/          FileStorage interface + local-disk and Supabase implementations
     integrations/     CrossRef client/mapper, local embeddings client, LLM client
     workers/          Celery app + the embedding job
   alembic/            migrations
@@ -126,6 +127,8 @@ There are no `.env.example` files checked in yet — create these by hand.
 | `EMBEDDING_MODEL` | Defaults to `BAAI/bge-small-en-v1.5`; downloaded and cached on first use |
 | `EMBEDDING_BACKEND` | `celery` (worker + Redis) or `background_tasks` (in-process, no worker — for free-tier hosting) |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Default to the docker-compose Redis; only used when `EMBEDDING_BACKEND=celery` |
+| `STORAGE_BACKEND` | `local` (disk) or `supabase` (private bucket — required where disk doesn't persist) |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Only when `STORAGE_BACKEND=supabase`; bucket must exist and be private |
 | `MAX_UPLOAD_SIZE_MB` | Defaults to 50 |
 | `LOCAL_STORAGE_ROOT` | Defaults to `./storage` |
 
@@ -148,6 +151,7 @@ There are no `.env.example` files checked in yet — create these by hand.
 | `make migrate` | Bring the schema up to head |
 | `make test` | Backend test suite (no external services needed) |
 | `make test-pg` | The pgvector tests, against a real Postgres |
+| `make test-supabase` | The Supabase Storage tests, against a real bucket |
 | `make build` | Typecheck + production build of the frontend |
 | `make install` | Sync both dependency sets after a pull |
 | `make clean` | Drop containers **and** their volumes — wipes all Postgres data |

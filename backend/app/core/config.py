@@ -27,8 +27,18 @@ class Settings(BaseSettings):
 
     crossref_contact_email: str = ""
 
+    # "local" writes to disk; "supabase" uses a private Storage bucket.
+    # Free-tier hosts don't keep local disk between restarts, so deployments
+    # set this to "supabase" — uploads were being silently lost otherwise.
+    storage_backend: Literal["local", "supabase"] = "local"
     local_storage_root: str = "./storage"
     max_upload_size_mb: int = 50
+
+    # Service role key, not the anon key: this runs server-side only and never
+    # reaches the browser, so there's nothing to scope down.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_storage_bucket: str = "papers"
 
     # Embeddings run locally via sentence-transformers, so no key here.
     # Vectors live in Postgres via pgvector — no separate vector service.
