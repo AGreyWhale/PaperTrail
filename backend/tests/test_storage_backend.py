@@ -9,7 +9,7 @@ from storage3.exceptions import StorageApiError
 from app.api.papers import get_file_storage
 from app.core.config import get_settings
 from app.storage.local import LocalFileStorage
-from app.storage.supabase_storage import SupabaseFileStorage
+from app.storage.supabase_storage import StorageNotConfiguredError, SupabaseFileStorage
 
 
 class FakeBucket:
@@ -145,3 +145,54 @@ def test_delete_still_raises_on_a_real_failure():
 
     with pytest.raises(StorageApiError):
         _storage(bucket).delete(key="a.pdf")
+
+
+# --- regressions from a production 500 ---
+
+def test_constructing_supabase_storage_with_blank_config_does_not_raise():
+    #POST /api/papers needs no files, but PaperService takes a FileStorage for
+    #every endpoint — building the client eagerly made paper creation 500 on a
+    #deployment whose SUPABASE_* vars weren't set yet
+    SupabaseFileStorage(url="", service_role_key="", bucket="")
+
+
+def test_creating_a_paper_works_even_when_supabase_is_unconfigured(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "storage_backend", "supabase")
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_service_role_key", "")
+    # Use the real factory, not conftest's tmp_path override.
+    from app.main import app as fastapi_app
+
+    fastapi_app.dependency_overrides.pop(get_file_storage, None)
+
+    response = client.post("/api/papers", json={"title": "A Paper", "authors": ["Someone"]})
+
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "url,key,bucket,expected",
+    [
+        ("", "k", "b", "SUPABASE_URL"),
+        ("u", "", "b", "SUPABASE_SERVICE_ROLE_KEY"),
+        ("u", "k", "", "SUPABASE_STORAGE_BUCKET"),
+    ],
+)
+def test_using_storage_without_config_names_the_missing_variable(url, key, bucket, expected):
+    storage = SupabaseFileStorage(url=url, service_role_key=key, bucket=bucket)
+
+    with pytest.raises(StorageNotConfiguredError) as exc:
+        storage.read(key="anything.pdf")
+
+    # The SDK's own message is just "supabase_url is required", which doesn't
+    # say which env var to go and set.
+    assert expected in str(exc.value)
+
+
+def test_a_configured_storage_still_builds_its_client_lazily():
+    bucket = FakeBucket()
+    storage = _storage(bucket)
+    storage.save(key="a.pdf", content=b"x")
+
+    assert storage.read(key="a.pdf") == b"x"
