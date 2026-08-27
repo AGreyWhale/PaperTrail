@@ -58,6 +58,9 @@ typing_extensions==4.16.0
 uvicorn==0.51.0
 uvloop==0.22.1
 watchfiles==1.2.0
+# Present so pip builds sdists (bibtexparser has no wheel) via the modern
+# path instead of the deprecated setup.py install, which pip will drop.
+wheel==0.45.1
 # Transitive only (uvicorn's standard extra, and supabase's realtime client);
 # nothing here imports it. Ranged rather than pinned because realtime caps it
 # below 16, and a hard pin at 16.1.1 made supabase uninstallable.
