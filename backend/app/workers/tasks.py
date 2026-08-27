@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 
 from app.core.config import get_settings
@@ -7,6 +9,8 @@ from app.workers.celery_app import celery_app
 from app.storage.factory import build_file_storage
 from app.workers.embedding_job import run_embedding_job
 from app.workers.prepare_job import run_prepare_job
+
+logger = logging.getLogger(__name__)
 
 
 def embed_paper_now(paper_id: str, owner_id: str) -> None:
@@ -34,8 +38,16 @@ def embed_paper_task(paper_id: str, owner_id: str) -> None:
 
 def prepare_paper_now(paper_id: str, owner_id: str) -> None:
     #Parse + embed in one go. Same wiring shape as embed_paper_now: its own
-    #session, real dependencies built here, logic left to the job function
+    #session, real dependencies built here, logic left to the job function.
+    #
+    #Logged at every step on purpose. This runs detached from the request, so
+    #when the process is killed mid-job — OOM, or a free-tier instance spinning
+    #down — nothing is raised and nothing is written: the paper just sits on
+    #"processing" forever. The log is the only way to see how far it got.
     settings = get_settings()
+    started = time.monotonic()
+    logger.info("prepare: starting paper=%s backend=%s", paper_id, settings.embedding_backend)
+
     db = SessionLocal()
     try:
         run_prepare_job(
@@ -45,6 +57,12 @@ def prepare_paper_now(paper_id: str, owner_id: str) -> None:
             storage=build_file_storage(settings),
             embeddings_client=EmbeddingsClient(model_name=settings.embedding_model),
         )
+        logger.info("prepare: finished paper=%s in %.1fs", paper_id, time.monotonic() - started)
+    except Exception:
+        #run_prepare_job already recorded the reason on the paper; this makes it
+        #visible in the platform log too, where it would otherwise be swallowed
+        logger.exception("prepare: FAILED paper=%s after %.1fs", paper_id, time.monotonic() - started)
+        raise
     finally:
         db.close()
 

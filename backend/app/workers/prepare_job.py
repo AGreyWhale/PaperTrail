@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,8 @@ from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
 from app.storage.base import FileStorage
 from app.workers.embedding_job import run_embedding_job
+
+logger = logging.getLogger(__name__)
 
 
 def run_prepare_job(
@@ -40,7 +43,11 @@ def run_prepare_job(
 
     paper_repository.set_processing_status(paper, "processing")
     try:
-        chunks = chunk_pages(extract_pages(storage.read(key=paper.file_storage_key)))
+        logger.info("prepare: downloading pdf paper=%s", paper_id)
+        content = storage.read(key=paper.file_storage_key)
+        logger.info("prepare: parsing %d bytes paper=%s", len(content), paper_id)
+        chunks = chunk_pages(extract_pages(content))
+        logger.info("prepare: %d chunks paper=%s", len(chunks), paper_id)
         if not chunks:
             #A PDF that yields nothing usable is a failure, not a paper that's
             #ready with zero content
@@ -55,5 +62,6 @@ def run_prepare_job(
 
     paper_repository.set_processing_status(paper, "processed")
 
+    logger.info("prepare: embedding %d chunks paper=%s", len(chunks), paper_id)
     #Embedding owns its own status transitions and error recording
     run_embedding_job(paper.id, owner_id=owner_id, db=db, embeddings_client=embeddings_client)

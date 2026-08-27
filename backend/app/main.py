@@ -9,6 +9,15 @@ from app.api import collections, health, notes, papers, search, synthesis, tags
 from app.core.config import get_settings
 from app.storage.supabase_storage import StorageNotConfiguredError
 
+#uvicorn configures its own loggers but leaves the root logger alone, so
+#application INFO records were being dropped before reaching the platform log.
+#That is why a background job could die mid-run and show nothing at all.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+    force=True,
+)
+
 logger = logging.getLogger(__name__)
 
 settings = get_settings()

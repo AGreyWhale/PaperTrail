@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_storage_bucket: str = "papers"
 
-    # Embeddings run locally via sentence-transformers, so no key here.
+    # Embeddings run locally through onnxruntime, so no key here.
     # Vectors live in Postgres via pgvector — no separate vector service.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
 
