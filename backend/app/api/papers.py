@@ -40,7 +40,7 @@ from app.schemas.paper import (
     TagCreate,
 )
 from app.services.doi_lookup_service import DoiLookupService
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EmbeddingService, PreparationService
 from app.services.paper_processing_service import PaperProcessingService
 from app.services.bibtex_service import BibtexService
 from app.services.note_service import NoteService
@@ -116,6 +116,33 @@ def get_embedding_enqueue_fn(
         background_tasks.add_task(embed_paper_now, paper_id, owner_id)
 
     return _enqueue_in_process
+
+def get_prepare_enqueue_fn(
+    background_tasks: BackgroundTasks,
+) -> Callable[[str, str], None]:
+    #Same backend switch as embedding, pointed at the combined pipeline
+    settings = get_settings()
+
+    if settings.embedding_backend == "celery":
+        def _enqueue(paper_id: str, owner_id: str) -> None:
+            from app.workers.tasks import prepare_paper_task
+
+            prepare_paper_task.delay(paper_id, owner_id)
+
+        return _enqueue
+
+    def _enqueue_in_process(paper_id: str, owner_id: str) -> None:
+        from app.workers.tasks import prepare_paper_now
+
+        background_tasks.add_task(prepare_paper_now, paper_id, owner_id)
+
+    return _enqueue_in_process
+
+def get_preparation_service(
+    db: Session = Depends(get_db),
+    enqueue_fn: Callable[[str, str], None] = Depends(get_prepare_enqueue_fn),
+) -> PreparationService:
+    return PreparationService(PaperRepository(db), enqueue_fn)
 
 def get_embedding_service(
     db: Session = Depends(get_db),
@@ -306,18 +333,22 @@ def list_notes(
 async def upload_paper_file(
     paper_id: uuid.UUID,
     file: UploadFile = File(...),
-    service: PaperService = Depends(get_paper_service),
     user_id: str = Depends(get_current_user_id),
+    service: PaperService = Depends(get_paper_service),
+    preparation: PreparationService = Depends(get_preparation_service),
 ) -> PaperOut:
     settings = get_settings()
     content = await file.read()
-    return service.attach_file(
+    paper = service.attach_file(
         paper_id,
         owner_id=user_id,
         filename=file.filename or "upload.pdf",
         content=content,
         max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
     )
+    #A freshly uploaded PDF is always going to be parsed and embedded, so start
+    #it here rather than making the reader press a button to say so
+    return preparation.enqueue_preparation(paper_id, owner_id=user_id)
 
 @router.get("/{paper_id}/file")
 def get_paper_file(
@@ -380,6 +411,16 @@ def list_chunks(
 # dependencies in signature order, so putting auth first means an
 # unauthenticated request 401s without first loading the embeddings
 # model or opening a database/LLM connection.
+
+@router.post("/{paper_id}/prepare", response_model=PaperOut)
+def prepare_paper(
+    paper_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    service: PreparationService = Depends(get_preparation_service),
+) -> PaperOut:
+    #One step for the reader: parse, chunk and embed. /process and /embed are
+    #still there for running either half on its own
+    return service.enqueue_preparation(paper_id, owner_id=user_id)
 
 @router.post("/{paper_id}/embed", response_model=PaperOut)
 def embed_paper(

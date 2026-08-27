@@ -13,7 +13,8 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Add a paper by DOI.** Looks the DOI up against the CrossRef REST API, maps the result into a title/authors/venue/year preview, and saves it on confirmation.
 - **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in storage behind a swappable `FileStorage` interface — local disk in development, a private Supabase Storage bucket in deployment, chosen by one env var.
 - **Process a PDF into chunks.** `pdfplumber` extracts per-page text, a sentence-aware chunker packs it into ~500-token chunks with a 2-sentence overlap, and each chunk keeps the page it started on so citations can point back to it later.
-- **Embed a paper's chunks in the background.** `POST /papers/{id}/embed` validates and returns immediately with `embedding_status="queued"`; a background job runs a local `sentence-transformers` BGE model and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
+- **Attach a PDF and it prepares itself.** Uploading kicks off `POST /papers/{id}/prepare` automatically — parse, chunk and embed as one background job — so a paper goes from upload to answerable without the reader pressing anything. `/process` and `/embed` remain for running either half alone.
+- **Embed a paper's chunks in the background.** `POST /papers/{id}/prepare` validates and returns immediately with `embedding_status="queued"`; a background job runs a local `sentence-transformers` BGE model and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
 - **Semantic search inside a paper.** `GET /papers/{id}/similar?query=…` embeds the query and returns the closest chunks with their page numbers and a similarity score.
 - **Ask a question about a paper.** `POST /papers/{id}/ask` retrieves the most relevant chunks, grounds an LLM answer in them, and returns the chunks it actually used as citations — real sources, not text parsed back out of the answer.
 - **A real reading view.** The library is a routed paper grid with live pipeline status per tile. Opening a paper gives a two-pane view: the PDF rendered by pdf.js on the left, the assistant panel on the right, with process/embed triggers in the header and polling that flips the panel on by itself when embedding finishes.
@@ -26,7 +27,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Recoverable embedding failures.** A failed job records the actual exception in `embedding_error`, surfaced on `PaperOut` and shown in the reading header with a Retry button. Retry re-uses the same embed endpoint end to end, clearing the error as it re-queues.
 - **Favorites, tags, collections, and notes.** Tags and collections are proper relational models (per-owner unique tag names, many-to-many joins), so they stay filterable. Notes can stand alone or carry the passage they came from — **Save quote** in the PDF highlight toolbar opens a composer pre-filled with the selection, and notes live in their own tab beside Ask rather than crowding it.
 - **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
-- **222 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
+- **245 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
 
 ## What's in progress
 
@@ -175,7 +176,8 @@ All `/api` routes require a Clerk bearer token.
 | `GET` | `/api/papers/{id}/file` | Serve the raw PDF bytes (the reading view fetches this with auth) |
 | `POST` | `/api/papers/{id}/process` | Extract text and rebuild the paper's chunks |
 | `GET` | `/api/papers/{id}/chunks` | List a paper's chunks in order |
-| `POST` | `/api/papers/{id}/embed` | Queue background embedding of the paper's chunks |
+| `POST` | `/api/papers/{id}/prepare` | Queue parse + chunk + embed as one job (what the UI calls) |
+| `POST` | `/api/papers/{id}/embed` | Queue embedding only, for a paper already processed |
 | `GET` | `/api/papers/{id}/similar?query=…&top_k=…` | Semantic search within the paper |
 | `GET` | `/api/search?q=…&limit=…` | Library-wide search, one result per paper |
 | `POST` | `/api/papers/compare` | Structured comparison table across 2–6 papers |

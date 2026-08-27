@@ -12,7 +12,9 @@ import { PdfViewer } from "../components/PdfViewer";
 import { useApiClient } from "../lib/api";
 import type { Citation, Note, Paper } from "../lib/types";
 
-const TRANSIENT_STATUSES = new Set(["queued", "embedding"]);
+//Either stage still running means the paper isn't ready yet
+const TRANSIENT_EMBEDDING = new Set(["queued", "embedding"]);
+const TRANSIENT_PROCESSING = new Set(["processing"]);
 
 const PANEL_KEY = "papertrail:panel-width";
 const COLLAPSED_KEY = "papertrail:panel-collapsed";
@@ -29,6 +31,7 @@ export function ReadingPage() {
   const { request, requestBlobUrl } = useApiClient();
   const queryClient = useQueryClient();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [pipelineBusy, setPipelineBusy] = useState(false);
   const [pendingQuestion, setPendingQuestion] = useState<{ text: string; nonce: number }>();
   const [targetPage, setTargetPage] = useState<{ page: number; nonce: number }>();
@@ -58,8 +61,12 @@ export function ReadingPage() {
     // Poll only while the pipeline is mid-flight, so the AI panel turns
     // usable on its own without a manual reload.
     refetchInterval: (query) => {
-      const status = (query.state.data as Paper | undefined)?.embedding_status;
-      return status && TRANSIENT_STATUSES.has(status) ? 2000 : false;
+      const paper = query.state.data as Paper | undefined;
+      if (!paper) return false;
+      const busy =
+        TRANSIENT_EMBEDDING.has(paper.embedding_status) ||
+        TRANSIENT_PROCESSING.has(paper.processing_status);
+      return busy ? 2000 : false;
     },
   });
 
@@ -69,9 +76,16 @@ export function ReadingPage() {
       return;
     }
     let cancelled = false;
-    requestBlobUrl(`/api/papers/${paperId}/file`).then((url) => {
-      if (!cancelled) setPdfUrl(url);
-    });
+    setPdfError(null);
+    requestBlobUrl(`/api/papers/${paperId}/file`)
+      .then((url) => {
+        if (!cancelled) setPdfUrl(url);
+      })
+      // Without this the promise rejects unhandled and the pane sits on
+      // "Loading PDF…" forever, which is what a missing file looked like.
+      .catch(() => {
+        if (!cancelled) setPdfError("This paper's PDF is missing from storage.");
+      });
     return () => {
       cancelled = true;
     };
@@ -156,20 +170,12 @@ export function ReadingPage() {
     localStorage.setItem(PANEL_KEY, String(panelWidth));
   }
 
-  async function handleProcess() {
+  //One call now parses, chunks and embeds — the reader shouldn't have to
+  //know those are separate stages
+  async function handlePrepare() {
     setPipelineBusy(true);
     try {
-      await request(`/api/papers/${paperId}/process`, { method: "POST" });
-      refreshPaper();
-    } finally {
-      setPipelineBusy(false);
-    }
-  }
-
-  async function handleEmbed() {
-    setPipelineBusy(true);
-    try {
-      await request(`/api/papers/${paperId}/embed`, { method: "POST" });
+      await request(`/api/papers/${paperId}/prepare`, { method: "POST" });
       refreshPaper();
     } finally {
       setPipelineBusy(false);
@@ -211,32 +217,7 @@ export function ReadingPage() {
           <PaperActions paper={paper} />
         </div>
 
-        {paper.has_file && paper.processing_status === "unprocessed" && (
-          <Button variant="secondary" size="sm" onClick={handleProcess} disabled={pipelineBusy}>
-            {pipelineBusy ? "Processing…" : "Process this paper"}
-          </Button>
-        )}
-        {paper.processing_status === "processed" && paper.embedding_status === "not_embedded" && (
-          <Button variant="ai" size="sm" onClick={handleEmbed} disabled={pipelineBusy}>
-            {pipelineBusy ? "Starting…" : "Prepare for Q&A"}
-          </Button>
-        )}
-        {paper.embedding_status === "failed" && (
-          <div className="flex items-center gap-2 min-w-0">
-            {paper.embedding_error && (
-              <span
-                title={paper.embedding_error}
-                className="text-xs text-accent-ai bg-accent-ai-soft rounded-control px-2 py-1 truncate max-w-xs"
-              >
-                {paper.embedding_error}
-              </span>
-            )}
-            {/* Same endpoint as the first attempt — it clears the error and re-queues. */}
-            <Button variant="ai" size="sm" onClick={handleEmbed} disabled={pipelineBusy}>
-              {pipelineBusy ? "Retrying…" : "Retry"}
-            </Button>
-          </div>
-        )}
+        {paper.has_file && <PipelineStatus paper={paper} busy={pipelineBusy} onRun={handlePrepare} />}
       </div>
 
       {showTags && (
@@ -249,7 +230,15 @@ export function ReadingPage() {
 
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 bg-bg-secondary">
-          {paper.has_file ? (
+          {paper.has_file && pdfError ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <p className="text-text-secondary text-sm">{pdfError}</p>
+              <p className="text-text-muted text-xs max-w-sm">
+                Re-upload it to restore the file. Processing and Q&A will need re-running afterwards.
+              </p>
+              <AttachPdfButton paperId={paper.id} hasFile={false} onAttached={refreshPaper} />
+            </div>
+          ) : paper.has_file ? (
             pdfUrl ? (
               <PdfViewer
                 fileUrl={pdfUrl}
@@ -308,6 +297,51 @@ export function ReadingPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+
+//One control for the whole parse-and-embed pipeline: shows progress while it
+//runs, the reason if it failed, and nothing at all once the paper is ready
+function PipelineStatus({
+  paper,
+  busy,
+  onRun,
+}: {
+  paper: Paper;
+  busy: boolean;
+  onRun: () => void;
+}) {
+  if (paper.embedding_status === "embedded") return null;
+
+  const running =
+    busy ||
+    paper.processing_status === "processing" ||
+    paper.embedding_status === "queued" ||
+    paper.embedding_status === "embedding";
+
+  if (running) {
+    const label =
+      paper.processing_status === "processing" ? "Reading the PDF…" : "Preparing for Q&A…";
+    return <span className="text-xs text-text-muted shrink-0">{label}</span>;
+  }
+
+  const failed = paper.processing_status === "failed" || paper.embedding_status === "failed";
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {failed && paper.embedding_error && (
+        <span
+          title={paper.embedding_error}
+          className="text-xs text-accent-ai bg-accent-ai-soft rounded-control px-2 py-1 truncate max-w-xs"
+        >
+          {paper.embedding_error}
+        </span>
+      )}
+      <Button variant="ai" size="sm" onClick={onRun} disabled={busy}>
+        {failed ? "Retry" : "Prepare for Q&A"}
+      </Button>
     </div>
   );
 }

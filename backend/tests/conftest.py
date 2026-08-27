@@ -4,7 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.papers import get_embedding_enqueue_fn, get_file_storage
+from app.api.papers import (
+    get_embedding_enqueue_fn,
+    get_file_storage,
+    get_prepare_enqueue_fn,
+)
 from app.core.auth import get_current_user_id
 from app.core.database import Base, get_db
 from app.main import app
@@ -57,6 +61,7 @@ def client(tmp_path):
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
     app.dependency_overrides[get_file_storage] = lambda: LocalFileStorage(root=tmp_path)
     app.dependency_overrides[get_embedding_enqueue_fn] = lambda: (lambda paper_id, owner_id: None)
+    app.dependency_overrides[get_prepare_enqueue_fn] = lambda: (lambda paper_id, owner_id: None)
     yield TestClient(app)
     app.dependency_overrides.clear()
 

@@ -1,6 +1,13 @@
 from abc import ABC, abstractmethod
 
 
+class FileNotFoundInStorageError(Exception):
+    """The key isn't in the backing store. Raised by every implementation so
+    callers get the same behaviour whichever backend is configured, instead of
+    a FileNotFoundError from one and an SDK error from another."""
+
+
+
 class FileStorage(ABC):
     """
     Storage backend for uploaded paper files. Services depend on this
@@ -18,4 +25,6 @@ class FileStorage(ABC):
 
     @abstractmethod
     def read(self, *, key: str) -> bytes:
-        """Return raw bytes stored at `key`."""
+        """Return raw bytes stored at `key`.
+
+        Raises FileNotFoundInStorageError if nothing is stored there."""

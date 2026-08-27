@@ -1,7 +1,7 @@
 from storage3.exceptions import StorageApiError
 from supabase import Client, create_client
 
-from app.storage.base import FileStorage
+from app.storage.base import FileNotFoundInStorageError, FileStorage
 
 #Supabase returns "not found" as a 404-ish API error rather than a distinct
 #exception type, so it has to be recognised from the message/status.
@@ -69,7 +69,13 @@ class SupabaseFileStorage(FileStorage):
         )
 
     def read(self, *, key: str) -> bytes:
-        return self._bucket.download(key)
+        try:
+            return self._bucket.download(key)
+        except StorageApiError as error:
+            #Same signal local disk gives, so callers don't branch on backend
+            if _is_not_found(error):
+                raise FileNotFoundInStorageError(key) from error
+            raise
 
     def delete(self, *, key: str) -> None:
         try:

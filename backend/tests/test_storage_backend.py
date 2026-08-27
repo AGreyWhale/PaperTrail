@@ -1,6 +1,7 @@
 """Which backend the factory builds, and that the Supabase implementation
 honours the FileStorage contract. Uses a fake Supabase client — no network,
 no credentials. The real bucket is exercised in test_supabase_storage.py."""
+import io
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from storage3.exceptions import StorageApiError
 
 from app.api.papers import get_file_storage
 from app.core.config import get_settings
+from app.storage.base import FileNotFoundInStorageError
 from app.storage.local import LocalFileStorage
 from app.storage.supabase_storage import StorageNotConfiguredError, SupabaseFileStorage
 
@@ -44,6 +46,13 @@ class FakeSupabaseClient:
     def from_(self, name):
         self.requested_buckets.append(name)
         return self._bucket
+
+
+def _raise(error: Exception):
+    def _fn(*_args, **_kwargs):
+        raise error
+
+    return _fn
 
 
 def _storage(bucket: FakeBucket) -> SupabaseFileStorage:
@@ -196,3 +205,46 @@ def test_a_configured_storage_still_builds_its_client_lazily():
     storage.save(key="a.pdf", content=b"x")
 
     assert storage.read(key="a.pdf") == b"x"
+
+
+# --- a key the store doesn't have ---
+
+def test_supabase_read_of_a_missing_object_raises_the_shared_error():
+    #Production hit this as a raw 500: rows survived a storage migration but
+    #their objects didn't
+    bucket = FakeBucket()
+    bucket.download = _raise(_api_error("Object not found", 404))
+
+    with pytest.raises(FileNotFoundInStorageError):
+        _storage(bucket).read(key="papers/abc/original.pdf")
+
+
+def test_supabase_read_still_propagates_other_errors():
+    bucket = FakeBucket()
+    bucket.download = _raise(_api_error("Unauthorized", 401))
+
+    with pytest.raises(StorageApiError):
+        _storage(bucket).read(key="a.pdf")
+
+
+def test_local_read_of_a_missing_file_raises_the_same_error(tmp_path):
+    #Both backends signal the same way, so callers don't branch on backend
+    with pytest.raises(FileNotFoundInStorageError):
+        LocalFileStorage(root=tmp_path).read(key="never-written.pdf")
+
+
+def test_serving_a_paper_whose_file_is_gone_returns_404_not_500(client, tmp_path):
+    paper_id = client.post(
+        "/api/papers", json={"title": "A Paper", "authors": ["Someone"]}
+    ).json()["id"]
+    client.post(
+        f"/api/papers/{paper_id}/file",
+        files={"file": ("p.pdf", io.BytesIO(b"%PDF-1.4\n%%EOF"), "application/pdf")},
+    )
+    # Delete the bytes behind the app's back, mimicking storage that vanished.
+    (tmp_path / "papers" / paper_id / "original.pdf").unlink()
+
+    response = client.get(f"/api/papers/{paper_id}/file")
+
+    assert response.status_code == 404
+    assert "re-upload" in response.json()["detail"]

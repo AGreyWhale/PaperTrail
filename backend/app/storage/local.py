@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.storage.base import FileStorage
+from app.storage.base import FileNotFoundInStorageError, FileStorage
 
 class LocalFileStorage(FileStorage):
     #Stores files localy until we set up production that'll use a S3-compatible backend
@@ -25,4 +25,7 @@ class LocalFileStorage(FileStorage):
         path.unlink(missing_ok=True)
     
     def read(self, *, key: str) -> bytes:
-        return self._path_for(key).read_bytes()
+        try:
+            return self._path_for(key).read_bytes()
+        except FileNotFoundError as exc:
+            raise FileNotFoundInStorageError(key) from exc

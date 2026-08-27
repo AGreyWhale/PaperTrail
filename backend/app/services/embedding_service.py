@@ -44,3 +44,29 @@ class EmbeddingService:
         paper = self.paper_repository.set_embedding_status(paper, "queued")
         self._enqueue_fn(str(paper.id), owner_id)
         return PaperOut.from_model(paper)
+
+
+class PreparationService:
+    """Queues the combined parse-and-embed pipeline. Mirrors EmbeddingService:
+    validate fast in the request, do the work elsewhere"""
+
+    def __init__(self, paper_repository: PaperRepository, enqueue_fn: Callable[[str, str], None]):
+        self.paper_repository = paper_repository
+        self._enqueue_fn = enqueue_fn
+
+    def enqueue_preparation(self, paper_id: uuid.UUID, *, owner_id: str) -> PaperOut:
+        paper = self.paper_repository.get(paper_id, owner_id=owner_id)
+        if paper is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not Found")
+        if paper.file_storage_key is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Attach a PDF before preparing this paper",
+            )
+
+        #Both statuses move together now, so the UI has one thing to watch and
+        #a retry clears the previous error
+        self.paper_repository.set_processing_status(paper, "processing")
+        paper = self.paper_repository.set_embedding_status(paper, "queued")
+        self._enqueue_fn(str(paper.id), owner_id)
+        return PaperOut.from_model(paper)

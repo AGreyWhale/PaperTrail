@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 
 from app.repositories.paper_repository import PaperRepository
 from app.schemas.paper import PaperCreate, PaperOut
-from app.storage.base import FileStorage
+from app.storage.base import FileNotFoundInStorageError, FileStorage
 
 _PDF_MAGIC_BYTES = b"%PDF-"
 
@@ -81,7 +81,16 @@ class PaperService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "This paper has no attached file")
 
         assert self.storage is not None, "get_file_content requires a storage backend"
-        return self.storage.read(key=paper.file_storage_key)
+        try:
+            return self.storage.read(key=paper.file_storage_key)
+        except FileNotFoundInStorageError as exc:
+            #The row still points at a key the store doesn't have. Happens when
+            #files were written to storage that didn't survive — say so, rather
+            #than 500ing with a stack trace the reader can't act on
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "This paper's PDF is missing from storage — re-upload it to restore the file",
+            ) from exc
 
     def record_opened(self, paper_id: uuid.UUID, *, owner_id: str, page: int | None) -> PaperOut:
         paper = self.repository.get(paper_id, owner_id=owner_id)
