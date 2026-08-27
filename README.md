@@ -14,7 +14,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in storage behind a swappable `FileStorage` interface — local disk in development, a private Supabase Storage bucket in deployment, chosen by one env var.
 - **Process a PDF into chunks.** `pdfplumber` extracts per-page text, a sentence-aware chunker packs it into ~500-token chunks with a 2-sentence overlap, and each chunk keeps the page it started on so citations can point back to it later.
 - **Attach a PDF and it prepares itself.** Uploading kicks off `POST /papers/{id}/prepare` automatically — parse, chunk and embed as one background job — so a paper goes from upload to answerable without the reader pressing anything. `/process` and `/embed` remain for running either half alone.
-- **Embed a paper's chunks in the background.** `POST /papers/{id}/prepare` validates and returns immediately with `embedding_status="queued"`; a background job runs a local `sentence-transformers` BGE model and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
+- **Embed a paper's chunks in the background.** `POST /papers/{id}/prepare` validates and returns immediately with `embedding_status="queued"`; a background job runs the BGE model's ONNX export through `onnxruntime` and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
 - **Semantic search inside a paper.** `GET /papers/{id}/similar?query=…` embeds the query and returns the closest chunks with their page numbers and a similarity score.
 - **Ask a question about a paper.** `POST /papers/{id}/ask` retrieves the most relevant chunks, grounds an LLM answer in them, and returns the chunks it actually used as citations — real sources, not text parsed back out of the answer.
 - **A real reading view.** The library is a routed paper grid with live pipeline status per tile. Opening a paper gives a two-pane view: the PDF rendered by pdf.js on the left, the assistant panel on the right, with process/embed triggers in the header and polling that flips the panel on by itself when embedding finishes.
@@ -27,25 +27,24 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 - **Recoverable embedding failures.** A failed job records the actual exception in `embedding_error`, surfaced on `PaperOut` and shown in the reading header with a Retry button. Retry re-uses the same embed endpoint end to end, clearing the error as it re-queues.
 - **Favorites, tags, collections, and notes.** Tags and collections are proper relational models (per-owner unique tag names, many-to-many joins), so they stay filterable. Notes can stand alone or carry the passage they came from — **Save quote** in the PDF highlight toolbar opens a composer pre-filled with the selection, and notes live in their own tab beside Ask rather than crowding it.
 - **A reading UI built for actually reading.** Zoom (buttons, `Ctrl`+scroll, `Ctrl` `+`/`-`/`0`, fit-width that re-fits when the pane resizes), pages rendered lazily a screen ahead, a resizable and collapsible assistant panel, adjustable answer text size, per-question history with copy, `/` to focus the ask box, and citations that scroll the PDF to the page and tint the quoted passage.
-- **245 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
+- **248 passing backend tests** covering auth, papers, uploads, file serving, processing, chunking, the PDF parser, the CrossRef client/mapper, the embedding job, per-paper and library-wide search, RAG, streaming, reading progress, favorites, tags, collections, and notes.
 
 ## What's in progress
 
 | Area | State |
 | --- | --- |
-| `torch` install size | `sentence-transformers` pulls in torch, so a full `make install` is a large download. The test suite fakes it out and never needs it |
 | Library-wide Q&A | Search spans the library, but `/ask` is still one paper at a time |
 
 ---
 
 ## Tech stack
 
-**Backend** — Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, Postgres 16 + pgvector, pdfplumber, Celery, sentence-transformers, Clerk, pytest
+**Backend** — Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, Postgres 16 + pgvector, pdfplumber, Celery, onnxruntime, Clerk, pytest
 **Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, react-pdf/pdf.js, Clerk, oxlint, pnpm
 **Infra (dev)** — Docker Compose (Postgres/pgvector + Redis), local disk for file storage
 **Infra (deployed)** — Render (free web service + Postgres), Supabase Storage for PDFs, Vercel for the frontend
 
-Embeddings run locally via `sentence-transformers`, so there's no per-token cost or rate limit on them. Answer generation goes to any OpenAI-compatible endpoint (Groq's free tier by default) — switching providers is three values in `.env`, not a code change.
+Embeddings run locally via `onnxruntime`, so there's no per-token cost or rate limit on them. The ONNX export of BGE produces vectors identical to the sentence-transformers original (cosine 1.0) while keeping the process around 350MB instead of ~950MB — sentence-transformers pulls in torch, which doesn't fit a 512MB free-tier host. Answer generation goes to any OpenAI-compatible endpoint (Groq's free tier by default) — switching providers is three values in `.env`, not a code change.
 
 ## Layout
 

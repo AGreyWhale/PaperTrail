@@ -36,12 +36,15 @@ Pygments==2.20.0
 PyJWT==2.13.0
 pytest==9.1.1
 pypdfium2==5.12.1
-# sentence-transformers drags in torch plus its own transitive deps
-# (numpy, tokenizers, huggingface-hub, pillow...). Those are left
-# unpinned on purpose so pip can resolve them — hand-splicing pins for
-# them in here is what caused the last dependency conflict. Regenerate
-# with `pip freeze` if you want a fully pinned lockfile.
-sentence-transformers==5.6.1
+# Embeddings run the BGE ONNX export through onnxruntime rather than
+# sentence-transformers. Same model, identical vectors (cosine 1.0), but it
+# skips torch — which took the API process to ~950MB RSS and OOM'd a 512MB
+# host. onnxruntime lands around 350MB. numpy/tokenizers/huggingface-hub are
+# left for pip to resolve rather than hand-pinned.
+onnxruntime==1.23.2
+tokenizers==0.22.2
+huggingface-hub==1.28.0
+numpy==2.2.6
 python-dotenv==1.2.2
 python-multipart==0.0.32
 PyYAML==6.0.3
