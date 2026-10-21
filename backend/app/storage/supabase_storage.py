@@ -1,17 +1,11 @@
 from storage3.exceptions import StorageApiError
 from supabase import Client, create_client
 
-from app.storage.base import FileNotFoundInStorageError, FileStorage
+from app.storage.base import FileNotFoundInStorageError, FileStorage, StorageNotConfiguredError
 
 #Supabase returns "not found" as a 404-ish API error rather than a distinct
 #exception type, so it has to be recognised from the message/status.
 _NOT_FOUND_MARKERS = ("not_found", "not found", "does not exist", "404")
-
-
-class StorageNotConfiguredError(RuntimeError):
-    """Raised when the Supabase backend is selected but its settings are blank.
-    Names the missing variables, rather than the SDK's bare 'supabase_url is
-    required'."""
 
 
 def _is_not_found(error: StorageApiError) -> bool:

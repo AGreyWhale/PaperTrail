@@ -126,3 +126,34 @@ def test_get_file_404s_for_another_users_paper(client):
     response = client.get(f"/api/papers/{paper_id}/file")
 
     assert response.status_code == 404
+
+
+def test_upload_reports_a_storage_failure_as_a_readable_502(client):
+    #An unhandled 500 skips the CORS headers, so the browser only saw
+    #"Failed to fetch" — the real cause has to reach it as a normal response
+    from app.api.papers import get_file_storage
+    from app.main import app
+    from app.storage.base import FileStorage, StorageUnavailableError
+
+    class BrokenStorage(FileStorage):
+        def save(self, *, key, content):
+            raise StorageUnavailableError("R2 refused the request: InvalidAccessKeyId")
+
+        def read(self, *, key):
+            raise NotImplementedError
+
+        def delete(self, *, key):
+            pass
+
+    paper_id = _create_paper(client)
+    app.dependency_overrides[get_file_storage] = lambda: BrokenStorage()
+
+    response = client.post(
+        f"/api/papers/{paper_id}/file",
+        files={"file": ("paper.pdf", io.BytesIO(_MINIMAL_PDF), "application/pdf")},
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 502
+    assert "InvalidAccessKeyId" in response.json()["detail"]
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

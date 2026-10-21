@@ -7,6 +7,17 @@ class FileNotFoundInStorageError(Exception):
     a FileNotFoundError from one and an SDK error from another."""
 
 
+class StorageNotConfiguredError(RuntimeError):
+    """A remote backend is selected but its settings are blank. Names the
+    missing variables, rather than the SDK's bare credential error."""
+
+
+class StorageUnavailableError(RuntimeError):
+    """The backing store refused or failed the request — bad credentials, a
+    missing bucket, a network error. Raised in place of SDK exceptions so the
+    API can answer with a readable error instead of an unhandled 500."""
+
+
 
 class FileStorage(ABC):
     """

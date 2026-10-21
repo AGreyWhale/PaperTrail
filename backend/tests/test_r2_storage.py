@@ -3,12 +3,16 @@ client — no network, no credentials."""
 import io
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.api.papers import get_file_storage
 from app.core.config import get_settings
-from app.storage.base import FileNotFoundInStorageError
-from app.storage.r2_storage import R2FileStorage, StorageNotConfiguredError
+from app.storage.base import (
+    FileNotFoundInStorageError,
+    StorageNotConfiguredError,
+    StorageUnavailableError,
+)
+from app.storage.r2_storage import R2FileStorage
 
 
 def _client_error(code: str) -> ClientError:
@@ -16,13 +20,21 @@ def _client_error(code: str) -> ClientError:
 
 
 class FakeS3Client:
-    def __init__(self, fail_delete_with: Exception | None = None, fail_get_with: Exception | None = None):
+    def __init__(
+        self,
+        fail_delete_with: Exception | None = None,
+        fail_get_with: Exception | None = None,
+        fail_put_with: Exception | None = None,
+    ):
         self.objects: dict[tuple[str, str], bytes] = {}
         self.puts: list[dict] = []
         self._fail_delete_with = fail_delete_with
         self._fail_get_with = fail_get_with
+        self._fail_put_with = fail_put_with
 
     def put_object(self, **kwargs):
+        if self._fail_put_with:
+            raise self._fail_put_with
         self.puts.append(kwargs)
         self.objects[(kwargs["Bucket"], kwargs["Key"])] = kwargs["Body"]
 
@@ -88,11 +100,26 @@ def test_read_of_a_missing_key_raises_the_shared_not_found_error():
         _storage(FakeS3Client()).read(key="never-existed.pdf")
 
 
-def test_read_still_raises_on_a_real_failure():
+def test_read_failure_names_r2s_error_code():
     storage = _storage(FakeS3Client(fail_get_with=_client_error("AccessDenied")))
 
-    with pytest.raises(ClientError):
+    with pytest.raises(StorageUnavailableError, match="AccessDenied"):
         storage.read(key="a.pdf")
+
+
+def test_save_with_bad_credentials_names_r2s_error_code():
+    storage = _storage(FakeS3Client(fail_put_with=_client_error("InvalidAccessKeyId")))
+
+    with pytest.raises(StorageUnavailableError, match="InvalidAccessKeyId"):
+        storage.save(key="a.pdf", content=b"x")
+
+
+def test_save_that_cannot_reach_r2_is_reported_as_unavailable():
+    error = EndpointConnectionError(endpoint_url="https://bad.r2.cloudflarestorage.com")
+    storage = _storage(FakeS3Client(fail_put_with=error))
+
+    with pytest.raises(StorageUnavailableError, match="Could not reach R2"):
+        storage.save(key="a.pdf", content=b"x")
 
 
 def test_delete_removes_the_object():
@@ -114,7 +141,7 @@ def test_delete_is_silent_when_the_object_is_already_gone(code):
 def test_delete_still_raises_on_a_real_failure():
     storage = _storage(FakeS3Client(fail_delete_with=_client_error("AccessDenied")))
 
-    with pytest.raises(ClientError):
+    with pytest.raises(StorageUnavailableError):
         storage.delete(key="a.pdf")
 
 

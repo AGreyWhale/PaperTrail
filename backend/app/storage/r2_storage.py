@@ -1,21 +1,32 @@
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
-from app.storage.base import FileNotFoundInStorageError, FileStorage
+from app.storage.base import (
+    FileNotFoundInStorageError,
+    FileStorage,
+    StorageNotConfiguredError,
+    StorageUnavailableError,
+)
 
 #S3 reports a missing object as a ClientError, not a distinct exception type:
 #"NoSuchKey" from get_object, a bare "404" from head-style calls.
 _NOT_FOUND_CODES = {"NoSuchKey", "404", "NotFound"}
 
 
-class StorageNotConfiguredError(RuntimeError):
-    """Raised when the R2 backend is selected but its settings are blank.
-    Names the missing variables, rather than botocore's credential errors."""
-
-
 def _is_not_found(error: ClientError) -> bool:
     return error.response.get("Error", {}).get("Code") in _NOT_FOUND_CODES
+
+
+def _unavailable(error: Exception) -> StorageUnavailableError:
+    #ClientError carries R2's own code (InvalidAccessKeyId, NoSuchBucket, ...),
+    #which is what actually tells you which setting is wrong
+    if isinstance(error, ClientError):
+        detail = error.response.get("Error", {})
+        return StorageUnavailableError(
+            f"R2 refused the request: {detail.get('Code')} {detail.get('Message', '')}".strip()
+        )
+    return StorageUnavailableError(f"Could not reach R2: {error}")
 
 
 class R2FileStorage(FileStorage):
@@ -79,9 +90,12 @@ class R2FileStorage(FileStorage):
 
     def save(self, *, key: str, content: bytes) -> None:
         #put_object overwrites by default, which re-uploading a PDF relies on
-        self._ensure_client().put_object(
-            Bucket=self._bucket, Key=key, Body=content, ContentType="application/pdf"
-        )
+        try:
+            self._ensure_client().put_object(
+                Bucket=self._bucket, Key=key, Body=content, ContentType="application/pdf"
+            )
+        except (ClientError, BotoCoreError) as error:
+            raise _unavailable(error) from error
 
     def read(self, *, key: str) -> bytes:
         try:
@@ -90,7 +104,9 @@ class R2FileStorage(FileStorage):
             #Same signal local disk gives, so callers don't branch on backend
             if _is_not_found(error):
                 raise FileNotFoundInStorageError(key) from error
-            raise
+            raise _unavailable(error) from error
+        except BotoCoreError as error:
+            raise _unavailable(error) from error
         return response["Body"].read()
 
     def delete(self, *, key: str) -> None:
@@ -100,4 +116,6 @@ class R2FileStorage(FileStorage):
             self._ensure_client().delete_object(Bucket=self._bucket, Key=key)
         except ClientError as error:
             if not _is_not_found(error):
-                raise
+                raise _unavailable(error) from error
+        except BotoCoreError as error:
+            raise _unavailable(error) from error

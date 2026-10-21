@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import collections, health, notes, papers, search, synthesis, tags
 from app.core.config import get_settings
-from app.storage.supabase_storage import StorageNotConfiguredError
+from app.storage.base import StorageNotConfiguredError, StorageUnavailableError
 
 #uvicorn configures its own loggers but leaves the root logger alone, so
 #application INFO records were being dropped before reaching the platform log.
@@ -25,20 +25,24 @@ settings = get_settings()
 
 def _warn_if_storage_misconfigured() -> None:
     #Surfaces at boot in the deploy log, instead of on the first upload attempt
-    if settings.storage_backend != "supabase":
-        return
-    missing = [
-        name
-        for name, value in (
+    required = {
+        "supabase": (
             ("SUPABASE_URL", settings.supabase_url),
             ("SUPABASE_SERVICE_ROLE_KEY", settings.supabase_service_role_key),
             ("SUPABASE_STORAGE_BUCKET", settings.supabase_storage_bucket),
-        )
-        if not value
-    ]
+        ),
+        "r2": (
+            ("R2_ACCOUNT_ID", settings.r2_account_id),
+            ("R2_ACCESS_KEY_ID", settings.r2_access_key_id),
+            ("R2_SECRET_ACCESS_KEY", settings.r2_secret_access_key),
+            ("R2_BUCKET", settings.r2_bucket),
+        ),
+    }.get(settings.storage_backend, ())
+    missing = [name for name, value in required if not value]
     if missing:
         logger.error(
-            "STORAGE_BACKEND=supabase but %s not set — file uploads and reads will fail",
+            "STORAGE_BACKEND=%s but %s not set — file uploads and reads will fail",
+            settings.storage_backend,
             ", ".join(missing),
         )
 
@@ -63,6 +67,14 @@ def _storage_not_configured(_request: Request, exc: StorageNotConfiguredError) -
     #A deployment problem, not a client one — 503 with the missing variable
     #named, rather than a stack trace the user can do nothing with
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(StorageUnavailableError)
+def _storage_unavailable(_request: Request, exc: StorageUnavailableError) -> JSONResponse:
+    #Handled here rather than left to bubble: an unhandled 500 skips the CORS
+    #headers, so the browser only ever reports "Failed to fetch"
+    logger.error("File storage failed: %s", exc)
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 
 app.include_router(health.router)
