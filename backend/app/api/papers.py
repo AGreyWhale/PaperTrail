@@ -1,6 +1,5 @@
 import json
 import uuid
-from pathlib import Path
 from typing import Callable
 
 from fastapi import (
@@ -49,8 +48,7 @@ from app.services.tag_service import TagService
 from app.services.rag_service import RagService
 from app.services.search_service import SearchService
 from app.storage.base import FileStorage
-from app.storage.local import LocalFileStorage
-from app.storage.supabase_storage import SupabaseFileStorage
+from app.storage.factory import build_file_storage
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 
@@ -59,14 +57,7 @@ From the excerpt below, write exactly three short questions the paper itself \
 can answer. One per line, no numbering, no preamble. Keep each under 12 words."""
 
 def get_file_storage() -> FileStorage:
-    settings = get_settings()
-    if settings.storage_backend == "supabase":
-        return SupabaseFileStorage(
-            url=settings.supabase_url,
-            service_role_key=settings.supabase_service_role_key,
-            bucket=settings.supabase_storage_bucket,
-        )
-    return LocalFileStorage(root=Path(settings.local_storage_root))
+    return build_file_storage(get_settings())
 
 
 def get_paper_service(db: Session = Depends(get_db), storage: FileStorage = Depends(get_file_storage)) -> PaperService:

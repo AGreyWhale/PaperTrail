@@ -1,0 +1,74 @@
+# Builds the frontend and publishes it to GitHub Pages on every push to main.
+#
+# Needs two repository variables (Settings → Secrets and variables → Actions →
+# Variables). Both end up in the public JS bundle, so neither is a secret:
+#   VITE_CLERK_PUBLISHABLE_KEY  Clerk publishable key (pk_test_… or pk_live_…)
+#   VITE_API_BASE_URL           The Render backend, e.g. https://papertrail-api.onrender.com
+#
+# And Settings → Pages → Source set to "GitHub Actions".
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [frontend/**, .github/workflows/deploy-pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push replaces a queued one rather than racing it
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+        env:
+          # A project site lives under /<repo>/, not at the domain root
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+
+      # Pages has no rewrite rules, so a refresh on /PaperTrail/papers/123
+      # would 404. Pages serves 404.html for any unknown path, and as a copy
+      # of index.html it boots the app, which then routes client-side.
+      - run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

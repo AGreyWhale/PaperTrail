@@ -30,15 +30,17 @@ services:
       - key: HF_HOME
         value: /opt/render/project/src/.hf-cache
 
-      # Wired automatically from the database defined below.
+      # Neon (free tier keeps pgvector and doesn't expire like Render's free
+      # Postgres). Its connection string works as-is, e.g.
+      # postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
       - key: DATABASE_URL
         sync: false
 
       # Free-tier disk does not survive a restart or a spin-down, so uploads
-      # go to a private Supabase Storage bucket instead of LOCAL_STORAGE_ROOT.
+      # go to a private Cloudflare R2 bucket instead of LOCAL_STORAGE_ROOT.
       - key: STORAGE_BACKEND
-        value: supabase
-      - key: SUPABASE_STORAGE_BUCKET
+        value: r2
+      - key: R2_BUCKET
         sync: false
 
       # No Celery worker and no Redis on the free tier.
@@ -50,7 +52,7 @@ services:
       - key: ENVIRONMENT
         value: production
 
-      # Set to the deployed frontend origin, e.g. https://papertrail.vercel.app
+      # The GitHub Pages origin, with no path: https://agreywhale.github.io
       - key: CORS_ORIGINS
         sync: false
       - key: CLERK_AUTHORIZED_PARTIES
@@ -67,8 +69,11 @@ services:
         sync: false
       - key: CROSSREF_CONTACT_EMAIL
         sync: false
-      - key: SUPABASE_URL
+      # R2 API token scoped to the bucket — server-side only, never sent to
+      # the browser.
+      - key: R2_ACCOUNT_ID
         sync: false
-      # Service role key — server-side only, never sent to the browser.
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
         sync: false

@@ -27,10 +27,10 @@ class Settings(BaseSettings):
 
     crossref_contact_email: str = ""
 
-    # "local" writes to disk; "supabase" uses a private Storage bucket.
+    # "local" writes to disk; "r2" and "supabase" use a private bucket.
     # Free-tier hosts don't keep local disk between restarts, so deployments
-    # set this to "supabase" — uploads were being silently lost otherwise.
-    storage_backend: Literal["local", "supabase"] = "local"
+    # set this to "r2" — uploads were being silently lost otherwise.
+    storage_backend: Literal["local", "r2", "supabase"] = "local"
     local_storage_root: str = "./storage"
     max_upload_size_mb: int = 50
 
@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     supabase_storage_bucket: str = "papers"
+
+    # Cloudflare R2 over its S3 API. The account ID builds the endpoint URL;
+    # the key pair comes from an R2 API token scoped to this one bucket.
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = "papers"
 
     # Embeddings run locally through onnxruntime, so no key here.
     # Vectors live in Postgres via pgvector — no separate vector service.

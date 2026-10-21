@@ -11,7 +11,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 
 - **Clerk authentication** on every route, with papers scoped to their owner — you only ever see your own library.
 - **Add a paper by DOI.** Looks the DOI up against the CrossRef REST API, maps the result into a title/authors/venue/year preview, and saves it on confirmation.
-- **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in storage behind a swappable `FileStorage` interface — local disk in development, a private Supabase Storage bucket in deployment, chosen by one env var.
+- **Attach a PDF** to a paper. Uploads are checked for the `%PDF-` magic bytes and a size limit (50 MB by default) before landing in storage behind a swappable `FileStorage` interface — local disk in development, a private Cloudflare R2 bucket in deployment, chosen by one env var.
 - **Process a PDF into chunks.** `pdfplumber` extracts per-page text, a sentence-aware chunker packs it into ~500-token chunks with a 2-sentence overlap, and each chunk keeps the page it started on so citations can point back to it later.
 - **Attach a PDF and it prepares itself.** Uploading kicks off `POST /papers/{id}/prepare` automatically — parse, chunk and embed as one background job — so a paper goes from upload to answerable without the reader pressing anything. `/process` and `/embed` remain for running either half alone.
 - **Embed a paper's chunks in the background.** `POST /papers/{id}/prepare` validates and returns immediately with `embedding_status="queued"`; a background job runs the BGE model's ONNX export through `onnxruntime` and writes the vectors onto the chunk rows via pgvector, scoped by owner and paper. Status moves `queued → embedding → embedded`, or `failed`.
@@ -42,7 +42,7 @@ An AI research paper assistant: keep a personal library of papers, attach the PD
 **Backend** — Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, Postgres 16 + pgvector, pdfplumber, Celery, onnxruntime, Clerk, pytest
 **Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, react-pdf/pdf.js, Clerk, oxlint, pnpm
 **Infra (dev)** — Docker Compose (Postgres/pgvector + Redis), local disk for file storage
-**Infra (deployed)** — Render (free web service + Postgres), Supabase Storage for PDFs, Vercel for the frontend
+**Infra (deployed)** — Render (free web service), Neon (Postgres + pgvector), Cloudflare R2 for PDFs, GitHub Pages for the frontend
 
 Embeddings run locally via `onnxruntime`, so there's no per-token cost or rate limit on them. The ONNX export of BGE produces vectors identical to the sentence-transformers original (cosine 1.0) while keeping the process around 350MB instead of ~950MB — sentence-transformers pulls in torch, which doesn't fit a 512MB free-tier host. Answer generation goes to any OpenAI-compatible endpoint (Groq's free tier by default) — switching providers is three values in `.env`, not a code change.
 
@@ -127,7 +127,8 @@ There are no `.env.example` files checked in yet — create these by hand.
 | `EMBEDDING_MODEL` | Defaults to `BAAI/bge-small-en-v1.5`; downloaded and cached on first use |
 | `EMBEDDING_BACKEND` | `celery` (worker + Redis) or `background_tasks` (in-process, no worker — for free-tier hosting) |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Default to the docker-compose Redis; only used when `EMBEDDING_BACKEND=celery` |
-| `STORAGE_BACKEND` | `local` (disk) or `supabase` (private bucket — required where disk doesn't persist) |
+| `STORAGE_BACKEND` | `local` (disk), `r2` or `supabase` (private bucket — required where disk doesn't persist) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Only when `STORAGE_BACKEND=r2`; from an R2 API token with Object Read & Write on the bucket |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Only when `STORAGE_BACKEND=supabase`; bucket must exist and be private |
 | `MAX_UPLOAD_SIZE_MB` | Defaults to 50 |
 | `LOCAL_STORAGE_ROOT` | Defaults to `./storage` |
@@ -223,4 +224,4 @@ One deliberate exception: pgvector's `cosine_distance()` is Postgres-only SQL an
 3. Grounded Q&A over a paper, with citations back to page numbers
 4. Move processing off the request path into a background worker (Redis is already running for this)
 5. Replace the preview page with a real library UI — routing, paper detail, PDF viewer
-6. S3-compatible storage for production
+6. ~~S3-compatible storage for production~~ — Cloudflare R2
